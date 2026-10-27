@@ -18,7 +18,7 @@ import {
 import { probeTargetHealth, PROBE_TIMEOUT_MS } from "./health-checks.js";
 import { RouteSession, SessionStore, parseRetryAfterMs, withFallback } from "./router.js";
 import { clientProtocol, buildUpstreamRequest, readJsonBody, isGeminiStream } from "./adapters.js";
-import { withoutReasoning, withDefaultGeminiThinking, withEffort } from "./bridge-reasoning.js";
+import { withoutReasoning, withDefaultGeminiThinking, withEffort, effortLabel } from "./bridge-reasoning.js";
 import { PROVIDERS } from "./providers/catalog.js";
 import { createApi } from "./api.js";
 import { createSseUsageTap, createJsonUsageTap, tapBytes, tapEvents, usageFrom } from "./usage.js";
@@ -1149,7 +1149,18 @@ async function proxy(req, res, protocol, pathname) {
         const attemptStartedAt = Date.now();
         // Every invoke is a new attempt with its own id, even when the very same
         // provider/model/key was called a moment ago (or by an earlier request).
+        // The effort this attempt will carry, for its log card. Computed the same way as the
+        // request body below; a failure here only means no tag.
+        let attemptEffort = null;
+        try {
+          const reasons = (capabilityLookup(target)?.capabilities ?? []).includes("reasoning");
+          attemptEffort = effortLabel(
+            withDefaultGeminiThinking(reasons ? withEffort(body, protocol, effortState.effort, target) : withoutReasoning(body), protocol, target),
+            protocol, target, upstreamProtocol
+          );
+        } catch { attemptEffort = null; }
         const attemptId = startAttemptEvent(liveSeq, {
+          effort: attemptEffort,
           phase: phase ?? null,
           provider: target.provider,
           model: target.model,
@@ -1168,6 +1179,7 @@ async function proxy(req, res, protocol, pathname) {
           const completedAt = Date.now();
           attempts.push({
             attemptId,
+            effort: attemptEffort,
             phase: phase ?? null,
             provider: target.provider,
             model: target.model,

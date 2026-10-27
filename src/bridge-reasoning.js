@@ -201,3 +201,21 @@ export function withEffort(body, clientProtocol, effort, target = null) {
   }
   return body;
 }
+
+/**
+ * The effort a request will really carry to its upstream, for the log card: "low", "medium",
+ * "high" or "xhigh", or null when no reasoning control is sent. It reads the finished body
+ * (after the panel's choice and the Gemini default), and shows "high" where an OpenAI-style
+ * endpoint would be sent "xhigh" as "high".
+ */
+export function effortLabel(body, clientProtocol, target = null, upstreamProtocol = null) {
+  try {
+    const reasoning = readReasoning(body, clientProtocol);
+    const effort = reasoning?.effort ?? effortFromBudget(reasoning?.budget);
+    if (!effort) return null;
+    const effortWire = upstreamProtocol === "openai-chat" || upstreamProtocol === "openai-responses";
+    return effortWire ? wireEffort(effort, target) : effort;
+  } catch {
+    return null;
+  }
+}

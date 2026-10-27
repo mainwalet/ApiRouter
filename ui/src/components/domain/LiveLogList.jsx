@@ -109,6 +109,8 @@ const STATE_HINT = Object.freeze({
   [STATE.FAILED]: "This model failed"
 });
 
+const EFFORT_NAME = Object.freeze({ low: "Low", medium: "Medium", high: "High", xhigh: "Extra High" });
+
 /** One attempt's target, as its own box inside its card. */
 function TargetBox({ row, tone }) {
   const calling = isLive(row) && row.kind === "attempt";
@@ -134,6 +136,17 @@ function TargetBox({ row, tone }) {
           </span>
           <span className="livelog__target mono" title={target}>{target}</span>
         </div>
+        {row.kind === "attempt" && row.effort ? (
+          <div className="livelog__effort-row">
+            <span
+              className={`livelog__effort livelog__effort--${row.effort} mono`}
+              title="Reasoning effort this attempt was sent with"
+              data-effort={row.effort}
+            >
+              Effort: {EFFORT_NAME[row.effort] ?? row.effort}
+            </span>
+          </div>
+        ) : null}
         {why ? <div className="livelog__detail livelog__detail--failed mono" title={why}>{why}</div> : null}
       </div>
     </div>
@@ -285,6 +298,7 @@ export function formatRowsAsText(rows) {
 
     const target = clean(describeTarget(row));
     if (target) lines.push(`  ${target}${figures && row.kind === "attempt" ? `  (${figures})` : ""}`);
+    if (row.kind === "attempt" && row.effort) lines.push(`  Effort: ${EFFORT_NAME[row.effort] ?? row.effort}`);
     if (row.kind === "request" && figures) lines.push(`  ${figures}`);
     const streamed = row.state === STATE.STREAMING ? "" : describeStream(row);   // a running stream has no final time yet
     if (streamed) lines.push(`  Streamed: ${streamed}`);

@@ -342,7 +342,9 @@ test("a Health target that failed transiently is retried in the second Health ba
     throw fail(503);
   });
   assert.equal(counts.get("cerebras/Z#0"), 2);
-  assert.deepEqual(calls, [...MANUAL_ORDER, ...PHASE_TWO, ...MANUAL_ORDER, ...PHASE_TWO.slice(0, 4)],
+  // A Gemini 503 is model-wide, so the model's other keys are not tried (in either round).
+  const firstKeys = (list) => list.filter((id) => !/^gemini\/[A-Z]#[1-9]/.test(id));
+  assert.deepEqual(calls, [...firstKeys(MANUAL_ORDER), ...firstKeys(PHASE_TWO), ...firstKeys(MANUAL_ORDER), ...firstKeys(PHASE_TWO)],
     "second Manual batch ran in full before the second Health batch, which stopped at the success");
 });
 
@@ -439,12 +441,14 @@ test("phase 2 starts only after the whole selection failed, and phase 3 only aft
 
 test("the final pass can still recover a target whose first failure was transient", async () => {
   const { calls, result, counts } = await walkManual((id, n) => {
-    if (id === "gemini/E#1" && n === 2) return "recovered";
+    if (id === "gemini/E#0" && n === 2) return "recovered";
     throw fail(503);
   });
   assert.equal(result, "recovered");
-  assert.equal(counts.get("gemini/E#1"), 2);
-  assert.deepEqual(calls.slice(-MANUAL_ORDER.length), MANUAL_ORDER, "phase 3 walked the original order up to the success");
+  assert.equal(counts.get("gemini/E#0"), 2);
+  // Gemini's other keys are skipped after a 503, so the original order has no key 1 entries.
+  const expected = MANUAL_ORDER.filter((id) => !/^gemini\/[A-Z]#[1-9]/.test(id));
+  assert.deepEqual(calls.slice(-expected.length), expected, "phase 3 walked the original order up to the success");
 });
 
 test("targets that fail for a non-transient reason are not retried in a later batch", async () => {

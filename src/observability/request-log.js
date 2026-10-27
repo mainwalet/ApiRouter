@@ -85,6 +85,9 @@ function bridgeFields(clientProtocol, upstreamProtocol, translated) {
  * (`attemptId`, `attemptSeq`, `callIndex`) is added by the log, never by the
  * caller's position in an array.
  */
+const EFFORT_LABELS = new Set(["low", "medium", "high", "xhigh"]);
+const normalizeEffort = (value) => (EFFORT_LABELS.has(value) ? value : null);
+
 function plainAttempt(attempt, index) {
   return {
     index: index + 1,
@@ -97,6 +100,7 @@ function plainAttempt(attempt, index) {
     provider: attempt?.provider ?? null,
     model: attempt?.model ?? null,
     keyIndex: Number.isInteger(attempt?.keyIndex) ? attempt.keyIndex : null,
+    effort: normalizeEffort(attempt?.effort),
     protocol: attempt?.protocol ?? null,
     translated: typeof attempt?.translated === "boolean" ? attempt.translated : null,
     // A skipped attempt never reached the network; only real attempts count
@@ -252,6 +256,7 @@ export class RequestLog {
           provider: row.provider,
           model: row.model,
           keyIndex: row.keyIndex,
+          effort: row.effort ?? null,
           state: row.ok ? ATTEMPT_STATES.SUCCESS : ATTEMPT_STATES.FAILED,
           ok: row.ok,
           status: row.status,
@@ -387,6 +392,7 @@ export class RequestLog {
       provider: target.provider ?? null,
       model: target.model ?? null,
       keyIndex: Number.isInteger(target.keyIndex) ? target.keyIndex : null,
+      effort: normalizeEffort(target.effort),
       state: ATTEMPT_STATES.CALLING,
       ok: false,
       status: null,

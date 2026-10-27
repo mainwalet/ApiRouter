@@ -1402,6 +1402,19 @@ button.livelog__rid:hover { color: var(--accent); text-decoration: underline; }
   .livelog__step-head { grid-template-columns: 76px minmax(0, 1fr); }
 }
 
+/* The reasoning effort an attempt was sent with. The word is always shown, never colour alone. */
+.livelog__effort-row { margin-top: 6px; }
+.livelog__effort {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid var(--border, currentColor);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+.livelog__effort--high, .livelog__effort--xhigh { color: var(--text); font-weight: 600; }
+
 /* A failed box keeps its full error text, wrapped, instead of one clipped line. */
 .livelog__step .livelog__detail { white-space: normal; overflow-wrap: anywhere; }
 

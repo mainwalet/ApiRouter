@@ -152,6 +152,8 @@ export function buildAttemptRow(attempt, ctx = {}) {
     provider: attempt.provider ?? null,
     model: attempt.model ?? null,
     keyIndex: optInt(attempt.keyIndex),
+    // Which reasoning effort this attempt carried (low / medium / high / xhigh); null when none was sent.
+    effort: ["low", "medium", "high", "xhigh"].includes(attempt.effort) ? attempt.effort : null,
     status: calling ? null : optInt(attempt.status),
     durationMs: calling || streaming ? null : (isNum(attempt.latencyMs) ? attempt.latencyMs : null),
     // When the body began streaming in (so the card can count up), and how long the whole stream took once it ended.
