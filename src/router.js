@@ -420,6 +420,10 @@ export async function withFallback(
   // target id -> the cooldownUntil THIS request set through a transient failure.
   const ownTransientCooldown = new Map();
   const cooldownReported = new Set();
+  // Targets this request must not call because their model already failed model-wide. Kept
+  // per request on purpose: a pinned request (the Playground) reports every target as
+  // available, so a cooldown alone would not stop it.
+  const modelWideSkip = new Set();
   const failures = [];
   // Unique targets only: a target can appear in more than one phase, and a
   // sibling must be marked failed once, not once per appearance.
@@ -455,6 +459,13 @@ export async function withFallback(
     const ownCooldown = isRetry
       && ownTransientCooldown.has(id)
       && Number(health.get(id)?.cooldownUntil) === ownTransientCooldown.get(id);
+    if (modelWideSkip.has(id)) {
+      if (!cooldownReported.has(id)) {
+        cooldownReported.add(id);
+        skip(step, "model_unavailable");
+      }
+      continue;
+    }
     if (!ownCooldown && !health.isAvailable(target)) {
       // A cooling target is skipped here; it may appear again later in the
       // plan, which is the same skip, not a retry.
@@ -523,6 +534,7 @@ export async function withFallback(
             if (health.key(sibling) === id) continue;
             if (sibling.provider !== target.provider || sibling.model !== target.model) continue;
             if (attempted.has(health.key(sibling))) continue;
+            modelWideSkip.add(health.key(sibling));
             health.markFailure(sibling, status, { cooldownMs: MODEL_UNAVAILABLE_COOLDOWN_MS, reason });
           }
         }

@@ -44,3 +44,26 @@ test("Gemini 508 and 408 also skip the model's other keys", async () => {
     assert.deepEqual((await run(targets, status)).calls, ["gemini/g1#0", "gemini/ok#0"]);
   }
 });
+
+test("a pinned request (every target reported available) also skips the model's other keys", async () => {
+  const targets = [t("gemini", "g1", 0), t("gemini", "g1", 1), t("gemini", "g1", 2), t("gemini", "ok", 0)];
+  for (const status of [503, 408]) {
+    const health = new HealthRegistry();
+    health.isAvailable = () => true;
+    const calls = [];
+    const result = await withFallback(
+      targets,
+      async (target) => {
+        calls.push(`${target.model}#${target.keyIndex}`);
+        if (target.model !== "ok") throw fail(status);
+        return "done";
+      },
+      undefined,
+      undefined,
+      health,
+      { plan: targets.map((target) => ({ target, phase: null })) }
+    );
+    assert.equal(result, "done");
+    assert.deepEqual(calls, ["g1#0", "ok#0"]);
+  }
+});
