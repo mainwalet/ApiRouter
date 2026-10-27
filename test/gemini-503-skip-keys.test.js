@@ -37,3 +37,10 @@ test("other statuses and other providers still try every key", async () => {
   const other503 = [t("groq", "g1", 0), t("groq", "g1", 1), t("groq", "ok", 0)];
   assert.deepEqual((await run(other503, 503)).calls, ["groq/g1#0", "groq/g1#1", "groq/ok#0"]);
 });
+
+test("Gemini 508 and 408 also skip the model's other keys", async () => {
+  for (const status of [508, 408]) {
+    const targets = [t("gemini", "g1", 0), t("gemini", "g1", 1), t("gemini", "ok", 0)];
+    assert.deepEqual((await run(targets, status)).calls, ["gemini/g1#0", "gemini/ok#0"]);
+  }
+});
