@@ -39,6 +39,7 @@ import {
   capabilityFallbackNotice,
   detectOutputIntent
 } from "./intent-detect.js";
+import { applySystemPrompt, loadSystemPrompt } from "./system-prompt.js";
 import {
   filterTargetsByRequirements,
   noCapableRouteMessage,
@@ -138,6 +139,14 @@ function alternateProtocols(target, error) {
 
 let config;
 try { config = loadConfig(); }
+catch (error) {
+  console.error(`Configuration error: ${error.message}`);
+  process.exit(1);
+}
+
+// The ApiRouter system prompt, read once at startup ("" when SYSTEM_PROMPT=off).
+let routerSystemPrompt = "";
+try { routerSystemPrompt = loadSystemPrompt({ enabled: config.systemPromptEnabled, file: config.systemPromptFile }); }
 catch (error) {
   console.error(`Configuration error: ${error.message}`);
   process.exit(1);
@@ -778,6 +787,13 @@ async function proxy(req, res, protocol, pathname) {
     profile.required,
     capabilityLookup
   );
+
+  // The ApiRouter system prompt goes in front of the client's own system prompt,
+  // on chat requests only. A pinned request (the Playground testing one key) is
+  // sent as the tester wrote it, and a request that already carries it is left alone.
+  if (profile.operation === "chat" && !pinnedRequest) {
+    applySystemPrompt(protocol, body, routerSystemPrompt);
+  }
 
   // WHAT THE USER ASKED FOR in words ("make a video", "generate a photo"). The
   // payload of such a request is plain text, so the structural profile above

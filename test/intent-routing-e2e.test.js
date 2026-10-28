@@ -17,6 +17,10 @@ const completion = (model) => ({
   body: { id: "x", object: "chat.completion", model, choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }] }
 });
 
+// The capability notice only. The ApiRouter system prompt is also a leading system message and is
+// not what these tests are about, so they look for the notice itself rather than counting messages.
+const hasRouterNotice = (messages) => messages.some((m) => typeof m.content === "string" && m.content.startsWith("Router notice:"));
+
 async function start(t, { withImageModel = true } = {}) {
   const textMock = await startMockUpstream(() => completion("text-model"));
   const imageMock = await startMockUpstream(() => completion("image-model"));
@@ -73,7 +77,7 @@ test("requests outside the create/generate + image/photo/video shape are plain c
     const response = await h.ask(text);
     assert.equal(response.status, 200, text);
     const [call] = [...h.posts(h.textMock), ...h.posts(h.imageMock)];
-    assert.equal(call.body.messages.length, 1, `${text}: no notice added`);
+    assert.equal(hasRouterNotice(call.body.messages), false, `${text}: no notice added`);
     assert.equal(call.body.modalities, undefined, text);
   }
 });
@@ -104,6 +108,6 @@ test("ordinary chat is untouched: no notice, no modalities", async (t) => {
   h.reset();
   assert.equal((await h.ask("explain how video compression works")).status, 200);
   const [call] = [...h.posts(h.textMock), ...h.posts(h.imageMock)];
-  assert.equal(call.body.messages.length, 1);
+  assert.equal(hasRouterNotice(call.body.messages), false);
   assert.equal(call.body.modalities, undefined);
 });

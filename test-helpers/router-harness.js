@@ -96,6 +96,9 @@ function clearProviderEnv() {
   }
   env.APIROUTER_API_KEYS = "";
   env.RETRY_STATUS_CODES = "";
+  // An ambient SYSTEM_PROMPT / SYSTEM_PROMPT_FILE must not change what a test sends upstream.
+  env.SYSTEM_PROMPT = "";
+  env.SYSTEM_PROMPT_FILE = "";
   // The legacy routing sources. Cleared so an ambient variable on the
   // developer's machine can never seed or influence a test's routing; a test
   // that wants to exercise the migration sets them explicitly afterwards.

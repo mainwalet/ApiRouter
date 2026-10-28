@@ -195,6 +195,10 @@ export function loadConfig(env = process.env) {
     // address (Ollama, LM Studio, a LAN gateway). Off by default because that
     // endpoint calls whatever URL it is given from the gateway's own network.
     playgroundAllowPrivateHosts: ["1", "true", "yes"].includes(String(env.PLAYGROUND_ALLOW_PRIVATE_HOSTS ?? "").trim().toLowerCase()),
+    // The ApiRouter system prompt prepended to every chat request. On by default;
+    // SYSTEM_PROMPT=off disables it, SYSTEM_PROMPT_FILE replaces the built-in text.
+    systemPromptEnabled: !["off", "0", "false", "no"].includes(String(env.SYSTEM_PROMPT ?? "").trim().toLowerCase()),
+    systemPromptFile: String(env.SYSTEM_PROMPT_FILE || "").trim(),
     maxBodyBytes: readNumber(env, "MAX_REQUEST_BODY_BYTES", 10 * 1024 * 1024, { min: 1, max: 100 * 1024 * 1024, expected: "an integer from 1 to 104857600" }),
     // The Fallback Chain: the single source of truth for routing order, plus
     // the selected operating mode. Written by the control panel.
