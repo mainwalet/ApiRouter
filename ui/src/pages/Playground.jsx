@@ -18,6 +18,7 @@ import { formatLatency, formatTokens, protocolLabel, providerLabel, EMPTY } from
 import { sanitizeText } from "../lib/sanitize.js";
 import { loadChat, saveChat } from "../lib/chatStore.js";
 import { usePageActive } from "../context/PageActivityContext.js";
+import { nextStick } from "../lib/followScroll.js";
 import { MAX_IMAGES, ACCEPTED_IMAGE_TYPES, imageProblem, readImageFile } from "../lib/images.js";
 
 /**
@@ -310,14 +311,32 @@ export default function Playground() {
     el.scrollTop = stickRef.current ? el.scrollHeight : scrollTopRef.current;
   }, [pageActive]);
 
+  const lastTopRef = useRef(0);
   const onTranscriptScroll = () => {
     const el = transcriptRef.current;
     if (!el) return;
-    scrollTopRef.current = el.scrollTop;
-    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    stickRef.current = near;
-    setAtBottom(near);
+    const top = el.scrollTop;
+    const near = el.scrollHeight - top - el.clientHeight < 80;
+    stickRef.current = nextStick(stickRef.current, near, top < lastTopRef.current - 1);
+    lastTopRef.current = top;
+    scrollTopRef.current = top;
+    setAtBottom(stickRef.current);
   };
+
+  // The on-screen keyboard opening or closing, or the prompt box resizing, changes the transcript's height.
+  // Keep following the reply through it instead of leaving the view stranded mid-reply.
+  useEffect(() => {
+    const el = transcriptRef.current;
+    if (!el) return undefined;
+    const repin = () => { if (stickRef.current) el.scrollTop = el.scrollHeight; };
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(repin) : null;
+    observer?.observe(el);
+    window.visualViewport?.addEventListener("resize", repin);
+    return () => {
+      observer?.disconnect();
+      window.visualViewport?.removeEventListener("resize", repin);
+    };
+  }, []);
 
   const jumpToBottom = () => {
     const el = transcriptRef.current;
@@ -385,6 +404,7 @@ export default function Playground() {
     if (!text && attached.length === 0) return;
     if (sendBlocked) return;
     stickRef.current = true;
+    setAtBottom(true);
 
     // Everything said so far goes along with the new prompt, so the model
     // remembers the conversation. No limit on how far back it reaches.
