@@ -25,6 +25,16 @@ const MAX_BYTES = 8 * 1024 * 1024;
 const MAX_ID_LENGTH = 256;
 const MAX_KEY_LENGTH = 4096;
 
+/**
+ * Cloudflare Workers AI's OpenAI-compatible base is
+ * `https://api.cloudflare.com/client/v4/accounts/<id>/ai/v1`. That surface only serves
+ * chat/embeddings/responses: `GET .../ai/v1/models` answers 405 ("GET not supported for
+ * requested URI", code 7001). The model catalogue lives one level up, at
+ * `.../ai/models/search`, which is paginated and answers `{ result: [...], result_info }`.
+ */
+const WORKERS_AI_BASE = /^(https?:\/\/[^/]+\/client\/v4\/accounts\/[^/]+\/ai)\/v1$/i;
+export const isWorkersAiBase = (base) => WORKERS_AI_BASE.test(String(base ?? "").replace(/\/+$/, ""));
+
 const join = (base, suffix) => `${String(base).replace(/\/+$/, "")}/${String(suffix).replace(/^\/+/, "")}`;
 
 /** The "list models" request for one API style. `page` carries the pagination cursor, if any. */
@@ -44,6 +54,14 @@ export function buildModelsRequest({ protocol, baseUrl, apiKey, page = null }) {
     url.searchParams.set("pageSize", "1000");
     if (page) url.searchParams.set("pageToken", page);
     if (apiKey) headers["x-goog-api-key"] = apiKey;
+  } else if (isWorkersAiBase(base)) {
+    // Chat models only: the router sends chat completions, so embeddings, image and speech
+    // models would just clutter the list the operator ticks from.
+    url = new URL(join(base.replace(/\/v1$/i, ""), "models/search"));
+    url.searchParams.set("per_page", "100");
+    url.searchParams.set("task", "Text Generation");
+    if (page) url.searchParams.set("page", page);
+    if (apiKey) headers.authorization = `Bearer ${apiKey}`;
   } else {
     // openai-chat and openai-responses share the same model list.
     url = new URL(join(base, openAiSuffixPath(base, "models")));
@@ -73,6 +91,20 @@ export function parseModelsResponse(protocol, payload) {
       if (id) ids.push(id);
     }
     next = payload?.nextPageToken || null;
+    return { ids, next };
+  }
+
+  // Workers AI catalogue: model ids are in `name` ("@cf/..."); `id` is an opaque UUID.
+  if (Array.isArray(payload?.result)) {
+    for (const item of payload.result) {
+      const id = cleanId(item?.name);
+      if (id) ids.push(id);
+    }
+    const info = payload?.result_info;
+    const page = Number(info?.page);
+    const perPage = Number(info?.per_page);
+    const total = Number(info?.total_count);
+    if (page >= 1 && perPage >= 1 && total > page * perPage) next = String(page + 1);
     return { ids, next };
   }
 

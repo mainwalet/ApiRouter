@@ -189,3 +189,61 @@ test("POST /api/custom-endpoints/discover: lists models, explains failures, neve
     await upstream.close();
   }
 });
+
+// --- Cloudflare Workers AI: /ai/v1/models answers 405, the catalogue is /ai/models/search ---
+
+const CF_BASE = "https://api.cloudflare.com/client/v4/accounts/7ed9c26da8cfc7cd6824415c1288de9b/ai/v1";
+
+test("Workers AI lists models from /ai/models/search, not the 405 /ai/v1/models", () => {
+  const request = buildModelsRequest({ protocol: "openai-chat", baseUrl: CF_BASE, apiKey: KEY });
+  assert.equal(request.url.pathname, "/client/v4/accounts/7ed9c26da8cfc7cd6824415c1288de9b/ai/models/search");
+  assert.equal(request.url.searchParams.get("task"), "Text Generation");
+  assert.equal(request.url.searchParams.get("per_page"), "100");
+  assert.equal(request.headers.authorization, `Bearer ${KEY}`);
+  assert.equal(request.url.search.includes(KEY), false, "the key never goes in the URL");
+  assert.equal(buildModelsRequest({ protocol: "openai-chat", baseUrl: CF_BASE, apiKey: KEY, page: "2" }).url.searchParams.get("page"), "2");
+
+  // A look-alike base on another host path is still an ordinary OpenAI-style list.
+  const other = buildModelsRequest({ protocol: "openai-chat", baseUrl: "https://api.example.com/v1", apiKey: KEY });
+  assert.equal(other.url.href, "https://api.example.com/v1/models");
+});
+
+test("Workers AI answers read the model `name` (the id is a UUID) and page by result_info", () => {
+  const first = parseModelsResponse("openai-chat", {
+    success: true,
+    result: [
+      { id: "11111111-aaaa", name: "@cf/qwen/qwen3-30b-a3b-fp8", task: { name: "Text Generation" } },
+      { id: "22222222-bbbb", name: "@cf/openai/gpt-oss-120b", task: { name: "Text Generation" } }
+    ],
+    result_info: { count: 2, page: 1, per_page: 2, total_count: 3 }
+  });
+  assert.deepEqual(first.ids, ["@cf/qwen/qwen3-30b-a3b-fp8", "@cf/openai/gpt-oss-120b"]);
+  assert.equal(first.next, "2");
+
+  const last = parseModelsResponse("openai-chat", {
+    result: [{ id: "33333333-cccc", name: "@cf/zai-org/glm-4.7-flash" }],
+    result_info: { count: 1, page: 2, per_page: 2, total_count: 3 }
+  });
+  assert.deepEqual(last.ids, ["@cf/zai-org/glm-4.7-flash"]);
+  assert.equal(last.next, null);
+});
+
+test("discovery walks every Workers AI page", async () => {
+  // The real host is api.cloudflare.com; the request builder is host-agnostic, so a local
+  // upstream with the same path proves the whole walk end to end.
+  const upstream = await startUpstream((req, res) => {
+    const page = Number(new URL(req.url, "http://x").searchParams.get("page") || 1);
+    const rows = page === 1
+      ? [{ id: "u1", name: "@cf/b/model-b" }, { id: "u2", name: "@cf/a/model-a" }]
+      : [{ id: "u3", name: "@cf/c/model-c" }];
+    json(res, 200, { success: true, result: rows, result_info: { page, per_page: 2, count: rows.length, total_count: 3 } });
+  });
+  try {
+    const discover = createModelDiscovery({ allowPrivateHosts: true });
+    const result = await discover({ protocol: "openai-chat", baseUrl: `http://127.0.0.1:${upstream.port}/client/v4/accounts/acc1/ai/v1`, apiKey: KEY });
+    assert.deepEqual(result.models, ["@cf/a/model-a", "@cf/b/model-b", "@cf/c/model-c"]);
+    assert.match(upstream.seen[0].url, /^\/client\/v4\/accounts\/acc1\/ai\/models\/search\?/);
+    assert.match(upstream.seen[1].url, /page=2/);
+    assert.equal(upstream.seen.length, 2);
+  } finally { await upstream.close(); }
+});
