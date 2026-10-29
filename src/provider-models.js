@@ -302,9 +302,7 @@ export class ProviderModelsStore {
       const list = cleanModelList(models);
       await this.ensureReady();
       const previous = this.snapshot();
-      const next = new Map(this.overrides);
-      next.set(id, list);
-      await this.persist(next);
+      await this.persistChange((overrides) => { overrides.set(id, list); return true; });
       this.emit(previous);
       return [...list];
     });
@@ -318,12 +316,37 @@ export class ProviderModelsStore {
       await this.ensureReady();
       if (!this.overrides.has(id)) return false;
       const previous = this.snapshot();
-      const next = new Map(this.overrides);
-      next.delete(id);
-      await this.persist(next);
+      const saved = await this.persistChange((overrides) => overrides.delete(id));
+      if (!saved) return false;
       this.emit(previous);
       return true;
     });
+  }
+
+  /**
+   * Applies one provider's change to the current lists and saves it. When GitHub
+   * refuses the save because the file moved on (another device, a redeploy, or a
+   * manual commit), the newer file is read in and the same single-provider change
+   * is applied on top of it, once. Other providers' lists are never overwritten:
+   * only the list being edited is this save's to replace.
+   *
+   * `change(overrides)` mutates a copy and returns false when there is nothing to save.
+   */
+  async persistChange(change) {
+    const attempt = async () => {
+      const next = new Map(this.overrides);
+      if (change(next) === false) return false;
+      await this.persist(next);
+      return true;
+    };
+    try {
+      return await attempt();
+    } catch (error) {
+      if (!this.remote || error?.type !== "conflict") throw error;
+      await this.init();
+      if (!this.remoteReady) throw error;
+      return attempt();
+    }
   }
 }
 

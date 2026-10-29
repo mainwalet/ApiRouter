@@ -81,6 +81,27 @@ test("GitHub holds the truth: a fresh container gets the saved lists back", asyn
   } finally { await github.close(); }
 });
 
+test("a stale save is retried on top of the newer GitHub copy without losing the other provider", async () => {
+  const github = await startMockGithub();
+  const remote = () => createModelConfigStorage({ repo: "acme/data", token: "ghp_testtoken", branch: "data", path: "provider-models.json", apiBase: github.apiBase });
+  try {
+    const a = new ProviderModelsStore({ remote: remote(), knownIds: ["groq", "gemini"], logger: quiet });
+    const b = new ProviderModelsStore({ remote: remote(), knownIds: ["groq", "gemini"], logger: quiet });
+    await a.init();
+    await b.init();
+    await a.set("groq", ["from-a"]);
+    // b still holds the revision from before a's save: GitHub refuses it once, then it is retried on the fresh copy.
+    await b.set("gemini", ["from-b"]);
+    assert.deepEqual(b.get("groq"), ["from-a"], "the other provider's newer list is kept");
+    assert.deepEqual(b.get("gemini"), ["from-b"]);
+
+    const fresh = new ProviderModelsStore({ remote: remote(), knownIds: ["groq", "gemini"], logger: quiet });
+    await fresh.init();
+    assert.deepEqual(fresh.get("groq"), ["from-a"]);
+    assert.deepEqual(fresh.get("gemini"), ["from-b"]);
+  } finally { await github.close(); }
+});
+
 test("applyProviderModelOverrides restores the env list when an override is gone", () => {
   const config = { providers: { groq: { models: ["env-1"] }, gemini: { models: ["env-g"] } } };
   const baseline = { groq: ["env-1"], gemini: ["env-g"] };
