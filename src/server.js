@@ -1254,6 +1254,19 @@ async function proxy(req, res, protocol, pathname) {
             attempt(false, upstream.status, redirect.message);
             throw redirect;
           }
+          // An API call never legitimately answers with an HTML page. A 2xx text/html body is a
+          // CDN / WAF interstitial (e.g. a Cloudflare challenge or "just a moment" page) or a wrong
+          // base URL that serves a website. Passing it through would log a SUCCESS and hand the
+          // client an unparseable body ("0 stream events"), and the router would never fall back.
+          // Treat it as a failed attempt so the walk moves on to the next target.
+          if (upstream.ok && /text\/html/i.test(upstream.headers?.get?.("content-type") ?? "")) {
+            try { await upstream.body?.cancel(); } catch { /* already closed */ }
+            const html = new Error("Upstream returned an HTML page (HTTP " + upstream.status + ") instead of an API response; likely a Cloudflare/WAF challenge or a wrong base URL");
+            html.status = 502;
+            html.retryable = true;
+            attempt(false, upstream.status, html.message);
+            throw html;
+          }
           if (!upstream.ok) {
             const text = await upstream.text();
             const error = new Error(text.slice(0, 2000) || ("Upstream HTTP " + upstream.status));
