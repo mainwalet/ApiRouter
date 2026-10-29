@@ -16,7 +16,8 @@ import {
   targetId
 } from "./health.js";
 import { probeTargetHealth, PROBE_TIMEOUT_MS } from "./health-checks.js";
-import { RouteSession, SessionStore, parseRetryAfterMs, withFallback } from "./router.js";
+import { FAILURE_SCOPE, RouteSession, SessionStore, parseRetryAfterMs, withFallback } from "./router.js";
+import { screenForOutOfCredits } from "./upstream-screen.js";
 import { clientProtocol, buildUpstreamRequest, readJsonBody, isGeminiStream } from "./adapters.js";
 import { withoutReasoning, withDefaultGeminiThinking, withEffort, effortLabel } from "./bridge-reasoning.js";
 import { PROVIDERS } from "./providers/catalog.js";
@@ -1304,6 +1305,24 @@ async function proxy(req, res, protocol, pathname) {
             attempt(false, upstream.status, error.message);
             throw error;
           }
+          // Pollinations answers HTTP 200 with its out-of-credits notice as the reply text. That is a
+          // failed attempt on this key, not a completion: the walk tries the next key, then the next
+          // model or provider, instead of logging a SUCCESS and showing the notice as the answer.
+          let screenedUpstream = upstream;
+          if (String(target.provider).toLowerCase() === "pollinations") {
+            const screened = await screenForOutOfCredits(upstream);
+            if (screened.message !== null) {
+              const noCredits = new Error("Pollinations answered HTTP 200 with an out-of-credits notice instead of a completion: " + screened.message);
+              noCredits.status = 402;
+              noCredits.retryable = true;
+              // The notice is about the account behind this key, so every model on this key is
+              // cooled down and the walk goes straight to the next key or provider.
+              noCredits.scope = FAILURE_SCOPE.KEY;
+              attempt(false, 402, noCredits.message);
+              throw noCredits;
+            }
+            screenedUpstream = screened.upstream;
+          }
           // The successful attempt is recorded too — otherwise the log would
           // show a chain of failures with no terminal success.
           // A stream is still running: the attempt shows STREAMING until it ends.
@@ -1311,7 +1330,7 @@ async function proxy(req, res, protocol, pathname) {
             ? wantsStream
             : /text\/event-stream/i.test(upstream.headers?.get?.("content-type") ?? "");
           attempt(true, upstream.status, null, { streaming });
-          return { upstream, target, upstreamProtocol, translated, attemptId, controller };
+          return { upstream: screenedUpstream, target, upstreamProtocol, translated, attemptId, controller };
         } catch (error) {
           if (isAbortError(error)) {
             if (clientDisconnected) {
