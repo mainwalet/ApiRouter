@@ -15,6 +15,7 @@ import { HealthDistribution } from "../components/charts/Charts.jsx";
 import { ProviderDrawer } from "../components/domain/ProviderDrawer.jsx";
 import { Link } from "../router.jsx";
 import { formatRelativeTime, providerLabel } from "../lib/format.js";
+import { sortRows } from "../lib/table.js";
 
 /**
  * Providers.
@@ -195,6 +196,18 @@ export default function Providers() {
     }
   ], [pendingProvider]);
 
+  // Sort by the chosen column, then keep providers that are not configured at
+  // the bottom whatever the column or direction. The partition is stable, so
+  // each group keeps the order the sort gave it.
+  const sortedRows = useMemo(() => {
+    const byKey = Object.fromEntries(columns.map((column) => [column.key, column]));
+    const sorted = sortRows(rows, byKey, sort);
+    return [
+      ...sorted.filter((row) => row.configured),
+      ...sorted.filter((row) => !row.configured)
+    ];
+  }, [rows, columns, sort]);
+
   if (loading && !providerData) {
     return (
       <div className="page">
@@ -242,7 +255,7 @@ export default function Providers() {
           <div className="panel">
             <DataTable
               columns={columns}
-              rows={rows}
+              rows={sortedRows}
               sort={sort}
               onSortChange={setSort}
               rowKey={(row) => row.id}
