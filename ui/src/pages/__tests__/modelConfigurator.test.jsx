@@ -98,6 +98,10 @@ describe("Model Configurator page", () => {
     expect(markup).toContain("Add model");
   });
 
+  it("offers a bulk capabilities action, enabled only when there are models", () => {
+    expect(renderToStaticMarkup(<ModelConfigurator />)).toContain("Bulk capabilities");
+  });
+
   it("renders the effective routing state separately from the declared source", () => {
     const markup = renderToStaticMarkup(<ModelConfigurator />);
     expect(markup).toContain("Llama");

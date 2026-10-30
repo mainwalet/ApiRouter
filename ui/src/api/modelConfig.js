@@ -24,6 +24,14 @@ export function updateModelConfig(id, input) {
   return apiRequest(`/api/model-config/${encodeURIComponent(id)}`, { method: "PUT", body: input, retries: 0 });
 }
 
+/**
+ * Adds and/or removes capabilities on many models in one saved document.
+ * `models` is a list of { provider, model } or the string "all".
+ */
+export function bulkUpdateModelCapabilities({ models, add = [], remove = [] }) {
+  return apiRequest("/api/model-config/bulk", { method: "POST", body: { models, add, remove }, retries: 0 });
+}
+
 export function removeModelConfig(id) {
   return apiRequest(`/api/model-config/${encodeURIComponent(id)}`, { method: "DELETE", retries: 0 });
 }

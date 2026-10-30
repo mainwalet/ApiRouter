@@ -316,3 +316,36 @@ export function rowTone(row) {
   if (!row.configuredInEnvironment) return "warn";
   return row.stored ? "ok" : "neutral";
 }
+
+/** The { provider, model } list a bulk request sends for a set of rows. */
+export function bulkTargets(rows) {
+  return asArray(rows).map((row) => ({ provider: row.provider, model: row.model }));
+}
+
+/**
+ * What a bulk change would do to a set of rows, so the dialog can say it before
+ * anything is saved: how many models gain / lose a capability, and how many
+ * already match.
+ */
+export function bulkPreview(rows, { add = [], remove = [] } = {}) {
+  const list = asArray(rows);
+  const adding = asArray(add);
+  const removing = asArray(remove);
+  let willChange = 0;
+  for (const row of list) {
+    const have = new Set(asArray(row.capabilities));
+    const gains = adding.some((id) => !have.has(id));
+    const loses = removing.some((id) => have.has(id));
+    if (gains || loses) willChange += 1;
+  }
+  return { total: list.length, willChange, alreadyMatch: list.length - willChange };
+}
+
+/** Three-way state of one capability across rows: "all", "some" or "none". */
+export function bulkCapabilityCoverage(rows, capabilityId) {
+  const list = asArray(rows);
+  if (list.length === 0) return "none";
+  const count = list.filter((row) => asArray(row.capabilities).includes(capabilityId)).length;
+  if (count === 0) return "none";
+  return count === list.length ? "all" : "some";
+}

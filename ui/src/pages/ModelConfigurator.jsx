@@ -7,12 +7,13 @@ import { StatusBadge } from "../components/ui/StatusBadge.jsx";
 import { EmptyState } from "../components/ui/EmptyState.jsx";
 import { ErrorState } from "../components/ui/ErrorState.jsx";
 import { TableSkeleton } from "../components/ui/LoadingSkeleton.jsx";
-import { Drawer } from "../components/ui/Overlays.jsx";
+import { Drawer, Modal } from "../components/ui/Overlays.jsx";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
 import { useApi } from "../hooks/useApi.js";
 import { useToast } from "../context/ToastContext.jsx";
 import {
+  bulkUpdateModelCapabilities,
   createModelConfig,
   getModelConfig,
   refreshModelConfig,
@@ -23,6 +24,9 @@ import {
   adapterSupportState,
   availabilityNote,
   buildDraftPayload,
+  bulkCapabilityCoverage,
+  bulkPreview,
+  bulkTargets,
   canRemoveModel,
   capabilityGroups,
   capabilityState,
@@ -65,6 +69,7 @@ export default function ModelConfigurator() {
   const [editor, setEditor] = useState(null); // { mode, row, draft }
   const [removing, setRemoving] = useState(null);
   const [formError, setFormError] = useState(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const view = useMemo(() => normalizeModelConfigPayload(config.data), [config.data]);
   const groups = useMemo(() => capabilityGroups(view.schema), [view.schema]);
@@ -144,6 +149,27 @@ export default function ModelConfigurator() {
       toast.success("Model configuration saved");
     } catch (failure) {
       setFormError(failure);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** One request, one saved document: every chosen model changes or none does. */
+  const applyBulk = async ({ rows, add, remove }) => {
+    setBusy(true);
+    try {
+      const result = await bulkUpdateModelCapabilities({ models: bulkTargets(rows), add, remove });
+      setBulkOpen(false);
+      await config.reload();
+      const changed = Number(result?.changed ?? 0);
+      toast.success(
+        changed > 0
+          ? `Capabilities updated on ${changed} ${changed === 1 ? "model" : "models"}`
+          : "Every chosen model already matched; nothing to save"
+      );
+    } catch (failure) {
+      // Keep the dialog open: the operator's choices are still in it.
+      toast.error(failure?.message || "Could not update the capabilities");
     } finally {
       setBusy(false);
     }
@@ -341,6 +367,15 @@ export default function ModelConfigurator() {
             >
               <Icon name="refresh" className="btn__icon" size={12} /><span className="btn__label">Reload</span>
             </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={busy || view.models.length === 0}
+              onClick={() => setBulkOpen(true)}
+              title="Add or remove capabilities on many models at once"
+            >
+              <Icon name="plus" className="btn__icon" size={12} /><span className="btn__label">Bulk capabilities</span>
+            </button>
             <button type="button" className="btn btn--primary" disabled={busy} onClick={openCreate}>
               <Icon name="plus" className="btn__icon" size={12} /><span className="btn__label">Add model</span>
             </button>
@@ -454,6 +489,18 @@ export default function ModelConfigurator() {
         onRemove={() => { setRemoving(editor?.row ?? null); setEditor(null); }}
       />
 
+      {bulkOpen ? (
+        <BulkCapabilitiesModal
+          groups={groups}
+          allRows={view.models}
+          filteredRows={filtered}
+          filtersActive={Boolean(search.trim() || provider || status || source)}
+          busy={busy}
+          onClose={() => setBulkOpen(false)}
+          onApply={applyBulk}
+        />
+      ) : null}
+
       <ConfirmDialog
         open={Boolean(removing)}
         onClose={() => setRemoving(null)}
@@ -470,6 +517,117 @@ export default function ModelConfigurator() {
         }
       />
     </div>
+  );
+}
+
+/**
+ * Add or remove capabilities on many models at once.
+ *
+ * Each capability is "keep" (default), "add to every chosen model" or "remove
+ * from every chosen model". The scope is either the models the table currently
+ * shows (so the filters pick the set) or every model. The dialog states how
+ * many models would actually change before anything is saved.
+ */
+function BulkCapabilitiesModal({ groups, allRows, filteredRows, filtersActive, busy, onClose, onApply }) {
+  const [scope, setScope] = useState("filtered");
+  const [ops, setOps] = useState({});
+
+  const rows = scope === "all" ? allRows : filteredRows;
+  const add = Object.keys(ops).filter((id) => ops[id] === "add");
+  const remove = Object.keys(ops).filter((id) => ops[id] === "remove");
+  const preview = bulkPreview(rows, { add, remove });
+  const nothingChosen = add.length === 0 && remove.length === 0;
+
+  const setOp = (id, value) => setOps((current) => {
+    const next = { ...current };
+    if (value === "keep") delete next[id]; else next[id] = value;
+    return next;
+  });
+
+  const close = onClose;
+
+  return (
+    <Modal
+      open
+      onClose={close}
+      title="Bulk capabilities"
+      labelledBy="bulk-capabilities-title"
+      footer={
+        <>
+          <span className="tiny dim grow" aria-live="polite">
+            {nothingChosen
+              ? "Choose at least one capability."
+              : `${preview.willChange} of ${preview.total} ${preview.total === 1 ? "model" : "models"} will change`}
+          </span>
+          <button type="button" className="btn" onClick={close} disabled={busy}>Cancel</button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={busy || nothingChosen || preview.total === 0 || preview.willChange === 0}
+            onClick={() => onApply({ rows, add, remove })}
+          >
+            {busy ? <span className="spinner" aria-hidden="true" /> : null}
+            Apply to {preview.willChange} {preview.willChange === 1 ? "model" : "models"}
+          </button>
+        </>
+      }
+    >
+      <div className="stack" style={{ gap: "var(--sp-4)" }}>
+        <div className="field">
+          <label className="field__label" htmlFor="bulk-scope">Apply to</label>
+          <select id="bulk-scope" className="select" value={scope} onChange={(event) => setScope(event.target.value)}>
+            <option value="filtered">
+              {filtersActive ? `Models matching the current filters (${filteredRows.length})` : `All models shown (${filteredRows.length})`}
+            </option>
+            <option value="all">Every model ({allRows.length})</option>
+          </select>
+          <p className="field__hint">
+            Everything else a model has (switch, protocol, context limit) stays as it is. Models without a saved
+            declaration get one, starting from the capabilities the gateway already infers for them. All changes are
+            saved together in one write.
+          </p>
+        </div>
+
+        {groups.length === 0 ? <p className="tiny dim">The capability schema was not reported by the gateway.</p> : null}
+
+        {groups.map((group) => (
+          <fieldset key={group.id} className="panel" style={{ margin: 0 }}>
+            <legend className="tiny dim" style={{ padding: "0 var(--sp-2)" }}>{group.label}</legend>
+            <div className="panel__body stack" style={{ gap: "var(--sp-2)" }}>
+              {group.items.map((item) => {
+                const coverage = bulkCapabilityCoverage(rows, item.id);
+                const value = ops[item.id] ?? "keep";
+                const controlId = `bulk-cap-${item.id}`;
+                return (
+                  <div key={item.id} className="row" style={{ gap: "var(--sp-2)", alignItems: "center", justifyContent: "space-between" }}>
+                    <label htmlFor={controlId} className="grow">
+                      <span className="row" style={{ gap: 6 }}>
+                        <span>{item.label}</span>
+                        <span className="tiny dim">
+                          {coverage === "all" ? "all have it" : coverage === "some" ? "some have it" : "none have it"}
+                        </span>
+                      </span>
+                      <span className="tiny dim">{item.description}</span>
+                    </label>
+                    <select
+                      id={controlId}
+                      className="select"
+                      style={{ width: "auto" }}
+                      value={value}
+                      onChange={(event) => setOp(item.id, event.target.value)}
+                    >
+                      <option value="keep">Keep</option>
+                      <option value="add">Add to all</option>
+                      <option value="remove">Remove from all</option>
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+          </fieldset>
+        ))}
+      </div>
+    </Modal>
   );
 }
 

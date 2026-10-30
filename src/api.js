@@ -993,6 +993,47 @@ export function createApi({
         return sendJson(req, res, 200, { ok: true, ...modelConfigPayload(Date.now()) });
       }
 
+      /*
+       * Add or remove capabilities on many models at once, in ONE saved
+       * document (one GitHub commit, all-or-nothing).
+       *   body: { models: [{provider, model}, ...] | "all", add: [...], remove: [...] }
+       */
+      if (pathname === "/api/model-config/bulk") {
+        if (req.method !== "POST") return fail(req, res, 405, "Use POST", "method_not_allowed");
+        let body;
+        try { body = await readJsonBody(req, config.maxBodyBytes); }
+        catch (error) { return fail(req, res, error.status || 400, "Invalid JSON body", "invalid_request"); }
+        if (!body || typeof body !== "object" || Array.isArray(body)) {
+          return fail(req, res, 400, "Request body must be a JSON object", "invalid_request");
+        }
+
+        await modelConfig.idle();
+        const pairs = body.models === "all"
+          ? [...modelConfig.index(targets).values()].map((row) => ({ provider: row.provider, model: row.model }))
+          : body.models;
+
+        let result;
+        try {
+          result = await modelConfig.bulkCapabilities(pairs, {
+            add: body.add ?? [],
+            remove: body.remove ?? [],
+            knownModels: knownModelIds(),
+            baseFor: () => inferCapabilities(),
+            enabledFor: (provider, model) => (modelSwitch ? !modelSwitch.isDisabled(provider, model) : true)
+          });
+        } catch (error) { return modelConfigFailure(req, res, error); }
+
+        resetAutomaticOrderCache();
+        return sendJson(req, res, 200, {
+          ok: true,
+          changed: result.changed,
+          created: result.created,
+          unchanged: result.unchanged,
+          ignored: result.warnings,
+          ...modelConfigPayload(Date.now())
+        });
+      }
+
       let id = "";
       if (pathname !== "/api/model-config") {
         try { id = decodeURIComponent(pathname.slice("/api/model-config/".length)); }

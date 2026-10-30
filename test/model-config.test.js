@@ -434,3 +434,119 @@ test("concurrent saves are serialized, so neither can persist a stale list", asy
   ]);
   assert.deepEqual(store.list().map((entry) => entry.model).sort(), ["a", "b", "c"]);
 });
+
+test("bulk: adds a capability to many models in ONE persisted write", async () => {
+  const file = tmpFile();
+  const store = new ModelConfigStore({ file, logger: quiet });
+  await store.create({ provider: "groq", model: "a", capabilities: ["text_input", "text_output"], contextLimit: 200000, enabled: false },
+    { knownModels: new Set(["groq/a"]) });
+
+  const known = new Set(["groq/a", "groq/b", "gemini/c"]);
+  const before = store.revision;
+  const result = await store.bulkCapabilities(
+    [{ provider: "groq", model: "a" }, { provider: "groq", model: "b" }, { provider: "Gemini", model: "c" }],
+    { add: ["streaming", "tool_calling"], knownModels: known, baseFor: () => ["text_input", "text_output"], enabledFor: () => true }
+  );
+
+  assert.equal(result.changed, 3);
+  assert.equal(result.created, 2);
+  assert.equal(result.unchanged, 0);
+  assert.notEqual(store.revision, before);
+
+  const [a, b, c] = ["a", "b", "c"].map((model) => store.list().find((entry) => entry.model === model));
+  assert.deepEqual([...a.capabilities].sort(), ["streaming", "text_input", "text_output", "tool_calling"]);
+  for (const entry of [a, b, c]) {
+    assert.ok(entry.capabilities.includes("streaming"));
+    assert.ok(entry.capabilities.includes("tool_calling"));
+    assert.ok(entry.capabilities.includes("text_input"), "the inferred base is kept");
+  }
+  // An existing declaration keeps everything that is not a capability.
+  assert.equal(a.enabled, false);
+  assert.equal(a.contextLimit, 200000);
+  assert.equal(c.provider, "gemini");
+
+  const document = JSON.parse(fs.readFileSync(file, "utf8"));
+  assert.equal(document.models.length, 3);
+});
+
+test("bulk: removing a capability and re-running is a no-op that does not write", async () => {
+  const file = tmpFile();
+  const store = new ModelConfigStore({ file, logger: quiet });
+  const known = new Set(["groq/a", "groq/b"]);
+  await store.create({ provider: "groq", model: "a", capabilities: ["text_input", "streaming"] }, { knownModels: known });
+  await store.create({ provider: "groq", model: "b", capabilities: ["text_input"] }, { knownModels: known });
+
+  const first = await store.bulkCapabilities(
+    [{ provider: "groq", model: "a" }, { provider: "groq", model: "b" }],
+    { remove: ["streaming"], knownModels: known }
+  );
+  assert.equal(first.changed, 1);
+  assert.equal(first.unchanged, 1);
+  assert.deepEqual(store.list().find((entry) => entry.model === "a").capabilities, ["text_input"]);
+
+  const revision = store.revision;
+  const second = await store.bulkCapabilities(
+    [{ provider: "groq", model: "a" }, { provider: "groq", model: "b" }],
+    { remove: ["streaming"], knownModels: known }
+  );
+  assert.equal(second.changed, 0);
+  assert.equal(store.revision, revision, "nothing to change means nothing is saved");
+});
+
+test("bulk: a bad request changes nothing at all", async () => {
+  const store = new ModelConfigStore({ logger: quiet });
+  const known = new Set(["groq/a"]);
+  await store.create({ provider: "groq", model: "a", capabilities: ["text_input"] }, { knownModels: known });
+  const revision = store.revision;
+
+  await assert.rejects(
+    store.bulkCapabilities([{ provider: "groq", model: "a" }, { provider: "groq", model: "typo" }], { add: ["streaming"], knownModels: known }),
+    (error) => error instanceof ModelConfigError && error.status === 400 && error.type === "unknown_model"
+  );
+  await assert.rejects(
+    store.bulkCapabilities([{ provider: "groq", model: "a" }], { add: [], remove: [], knownModels: known }),
+    (error) => error.status === 400
+  );
+  await assert.rejects(
+    store.bulkCapabilities([{ provider: "groq", model: "a" }], { add: ["streaming"], remove: ["streaming"], knownModels: known }),
+    (error) => error.status === 400
+  );
+  await assert.rejects(
+    store.bulkCapabilities([], { add: ["streaming"], knownModels: known }),
+    (error) => error.status === 400
+  );
+  await assert.rejects(
+    store.bulkCapabilities([{ provider: "groq", model: "a" }], { add: ["made_up"], knownModels: known }),
+    (error) => error.status === 400
+  );
+
+  assert.equal(store.revision, revision);
+  assert.deepEqual(store.list()[0].capabilities, ["text_input"]);
+  assert.equal(store.list().length, 1);
+});
+
+test("bulk: against GitHub it makes a single commit for the whole batch", async () => {
+  const github = await startMockGithub();
+  try {
+    const remote = createModelConfigStorage({
+      repo: github.repo, token: github.token, apiBase: github.apiBase, branch: "main", path: "model-config.json"
+    });
+    const store = new ModelConfigStore({ remote, logger: quiet });
+    await store.init();
+    const puts = () => github.requests.filter((request) => request.method === "PUT").length;
+    const before = puts();
+
+    const models = ["a", "b", "c", "d"];
+    const known = new Set(models.map((model) => `groq/${model}`));
+    const result = await store.bulkCapabilities(
+      models.map((model) => ({ provider: "groq", model })),
+      { add: ["streaming"], knownModels: known }
+    );
+
+    assert.equal(result.changed, 4);
+    assert.equal(puts() - before, 1, "one commit, not one per model");
+    assert.equal(JSON.parse(github.stored("main", "model-config.json")).models.length, 4);
+  } finally {
+    await github.close();
+  }
+});

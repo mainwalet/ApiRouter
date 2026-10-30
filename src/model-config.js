@@ -782,6 +782,119 @@ export class ModelConfigStore {
   }
 
   /**
+   * Adds and/or removes capabilities on MANY models in one persisted write.
+   *
+   * Saving model by model would mean one GitHub commit per model (and a 409
+   * race on every one after the first), so the whole batch is validated first
+   * and written once: either every model changes or none does.
+   *
+   * A model with a saved declaration keeps everything else it has (enabled
+   * flag, protocol, context limit, display name, metadata) and only its
+   * capability list changes. A model with no saved declaration gets one,
+   * starting from the capabilities the environment implies for it.
+   *
+   * @param pairs       [{ provider, model }] the models to change
+   * @param add         capability ids to declare
+   * @param remove      capability ids to un-declare
+   * @param knownModels optional Set of `provider/model` the environment configures
+   * @param baseFor     (provider, model) => capabilities an undeclared model starts from
+   * @param enabledFor  (provider, model) => enabled flag a NEW declaration starts with
+   * @returns { entries (copies of every touched declaration), changed, unchanged, warnings }
+   */
+  bulkCapabilities(pairs, { add = [], remove = [], knownModels = null, baseFor = null, enabledFor = null } = {}) {
+    return this.exclusive(async () => {
+      await this.ensureReady();
+
+      if (!Array.isArray(add) || !Array.isArray(remove)) throw bad("add and remove must be arrays of capability ids");
+      const adding = normalizeCapabilities(add);
+      const removing = normalizeCapabilities(remove);
+      if (adding.capabilities.length === 0 && removing.capabilities.length === 0) {
+        throw bad("Choose at least one known capability to add or remove");
+      }
+      const overlap = adding.capabilities.filter((id) => removing.capabilities.includes(id));
+      if (overlap.length > 0) throw bad(`"${overlap[0]}" cannot be added and removed in the same request`);
+
+      if (!Array.isArray(pairs) || pairs.length === 0) throw bad("models must be a non-empty list of { provider, model }");
+      const seen = new Set();
+      const wanted = [];
+      for (const pair of pairs) {
+        if (!isObject(pair)) throw bad("each model must be an object with provider and model");
+        const provider = cleanProvider(pair.provider);
+        const model = cleanModel(pair.model);
+        const key = `${provider}/${model}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (knownModels && !knownModels.has(key) && !this.overrideFor(provider, model)) {
+          throw new ModelConfigError(400, `"${key}" is not configured by any provider`, "unknown_model");
+        }
+        wanted.push({ provider, model });
+      }
+
+      const now = Date.now();
+      const created = [];
+      const touched = new Map(); // id -> next entry
+      let unchanged = 0;
+
+      for (const { provider, model } of wanted) {
+        const existing = this.overrideFor(provider, model);
+        const base = existing
+          ? existing.capabilities
+          : (typeof baseFor === "function" ? baseFor(provider, model) : null) ?? DEFAULT_CAPABILITIES;
+        const next = new Set(normalizeCapabilities(base).capabilities);
+        for (const id of adding.capabilities) next.add(id);
+        for (const id of removing.capabilities) next.delete(id);
+        const capabilities = CAPABILITY_IDS.filter((id) => next.has(id));
+
+        if (existing) {
+          const same = capabilities.length === existing.capabilities.length
+            && capabilities.every((id, index) => id === existing.capabilities[index]);
+          if (same) { unchanged += 1; continue; }
+          touched.set(existing.id, { ...existing, capabilities: [...capabilities], updatedAt: now });
+        } else {
+          const enabled = typeof enabledFor === "function" ? enabledFor(provider, model) !== false : true;
+          created.push({
+            id: modelConfigId(provider, model),
+            provider,
+            model,
+            displayName: model,
+            enabled,
+            capabilities,
+            protocol: null,
+            contextLimit: null,
+            metadata: {},
+            version: MODEL_CONFIG_SCHEMA_VERSION,
+            createdAt: now,
+            updatedAt: now
+          });
+        }
+      }
+
+      if (this.entries.length + created.length > MAX_MODEL_CONFIG_ENTRIES) {
+        throw bad(`At most ${MAX_MODEL_CONFIG_ENTRIES} model configurations`);
+      }
+
+      const warnings = [...adding.unknown, ...removing.unknown]
+        .map((id) => `Ignored unknown capability "${id}"; this build does not understand it.`);
+
+      if (touched.size === 0 && created.length === 0) {
+        return { entries: [], changed: 0, unchanged, created: 0, warnings };
+      }
+
+      const previous = this.entries;
+      const next = [...this.entries.map((entry) => touched.get(entry.id) ?? entry), ...created];
+      await this.persist(next);
+      this.emit(previous);
+      return {
+        entries: [...touched.values(), ...created].map(cloneEntry),
+        changed: touched.size + created.length,
+        created: created.length,
+        unchanged,
+        warnings
+      };
+    });
+  }
+
+  /**
    * Drops the saved declarations of models that no provider lists any more
    * (for example after they were removed on the Providers page). Without this
    * the declaration lingers as a "Configured" ghost row for a model that no

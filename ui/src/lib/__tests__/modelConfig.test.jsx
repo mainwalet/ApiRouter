@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  bulkCapabilityCoverage,
+  bulkPreview,
+  bulkTargets,
   adapterSupportState,
   adapterSupports,
   availabilityNote,
@@ -275,5 +278,33 @@ describe("model config view model", () => {
     ])).toEqual({
       total: 3, configured: 3, environmentOnly: 0, enabled: 2, disabled: 1, declaredUnsupported: 1
     });
+  });
+
+  it("builds the bulk request targets and previews what would change", () => {
+    const rows = [
+      row({ provider: "groq", model: "a", capabilities: ["text_input"] }),
+      row({ provider: "groq", model: "b", capabilities: ["text_input", "tool_calling"] }),
+      row({ provider: "gemini", model: "c", capabilities: [] })
+    ];
+    expect(bulkTargets(rows)).toEqual([
+      { provider: "groq", model: "a" },
+      { provider: "groq", model: "b" },
+      { provider: "gemini", model: "c" }
+    ]);
+    expect(bulkPreview(rows, { add: ["tool_calling"] })).toEqual({ total: 3, willChange: 2, alreadyMatch: 1 });
+    expect(bulkPreview(rows, { remove: ["tool_calling"] })).toEqual({ total: 3, willChange: 1, alreadyMatch: 2 });
+    expect(bulkPreview(rows, { add: ["text_input"], remove: ["tool_calling"] }).willChange).toBe(2);
+    expect(bulkPreview([], { add: ["x"] })).toEqual({ total: 0, willChange: 0, alreadyMatch: 0 });
+  });
+
+  it("reports whether a capability is on all, some or none of the rows", () => {
+    const rows = [
+      row({ capabilities: ["streaming"] }),
+      row({ capabilities: ["streaming", "tool_calling"] })
+    ];
+    expect(bulkCapabilityCoverage(rows, "streaming")).toBe("all");
+    expect(bulkCapabilityCoverage(rows, "tool_calling")).toBe("some");
+    expect(bulkCapabilityCoverage(rows, "image_input")).toBe("none");
+    expect(bulkCapabilityCoverage([], "streaming")).toBe("none");
   });
 });
