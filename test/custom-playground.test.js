@@ -237,6 +237,27 @@ test("a redirect is reported, not followed", async () => {
   }
 });
 
+test("a 200 HTML page (WAF challenge) is reported as an error, not shown as a reply", async () => {
+  const upstream = await startUpstream((_req, res) => {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end('<!doctype html><meta name="aliyun_waf_aa" content="x"><script>/* challenge */</script>');
+  });
+  const playground = await startPlayground({ allowPrivateHosts: true });
+  try {
+    const { response, text } = await playground.call({
+      protocol: "openai-chat", baseUrl: `http://127.0.0.1:${upstream.port}`, apiKey: KEY, model: "m", request: chatRequest()
+    });
+    assert.equal(response.status, 502);
+    const error = JSON.parse(text).error;
+    assert.equal(error.type, "upstream_html_response");
+    assert.equal(error.details.upstreamStatus, 200);
+    assert.ok(!text.includes("aliyun_waf"), "the HTML body must not be passed through");
+  } finally {
+    await playground.close();
+    await upstream.close();
+  }
+});
+
 test("private hosts are refused by default, both as an IP literal and by name", async () => {
   const upstream = await startUpstream((_req, res) => { res.writeHead(200); res.end("{}"); });
   const playground = await startPlayground({});

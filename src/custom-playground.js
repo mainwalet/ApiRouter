@@ -341,6 +341,22 @@ export function createCustomPlayground({
           return;
         }
 
+        // An API call never legitimately answers with an HTML page. A 2xx text/html body is a
+        // CDN / WAF interstitial (a JS challenge such as Alibaba Cloud WAF or Cloudflare) or a base
+        // URL that serves a website. Showing it as a 200 "reply" hides the real problem, so report
+        // it as a failed call with a message that says what happened.
+        if (/text\/html/i.test(String(upstreamRes.headers["content-type"] ?? ""))) {
+          upstreamRes.resume();
+          sendError(
+            res,
+            502,
+            "upstream_html_response",
+            `The host answered HTTP ${status} with an HTML page instead of an API response. This is usually a WAF / bot-protection challenge that blocks server-side requests, or a base URL that points at a website. Check the base URL, or whether this provider only accepts requests from its own approved clients.`,
+            { upstreamStatus: status }
+          );
+          return done();
+        }
+
         res.writeHead(status, {
           "content-type": upstreamRes.headers["content-type"] || "application/json",
           "cache-control": "no-store",
