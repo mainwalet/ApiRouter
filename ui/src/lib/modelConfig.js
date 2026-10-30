@@ -46,6 +46,8 @@ function normalizeRow(raw) {
     executableCapabilities: asArray(raw.executableCapabilities).filter((id) => typeof id === "string"),
     unsupportedCapabilities: asArray(raw.unsupportedCapabilities).filter((id) => typeof id === "string"),
     protocol: asString(raw.protocol) || null,
+    // Tokens the model can hold; null = not declared (never excluded for size).
+    contextLimit: Number.isInteger(raw.contextLimit) && raw.contextLimit > 0 ? raw.contextLimit : null,
     protocols: asArray(raw.protocols).filter((protocol) => typeof protocol === "string"),
     keyCount: Number.isFinite(raw.keyCount) ? raw.keyCount : 0,
     configuredInEnvironment: raw.configuredInEnvironment !== false,
@@ -172,13 +174,40 @@ export function providerChoices(models) {
   return [...new Set(asArray(models).map((row) => row.provider))].sort();
 }
 
+const TOKEN_SUFFIX = { k: 1_000, m: 1_000_000 };
+
+/**
+ * Reads a context-limit field: "1m", "1.5M", "500k", "200,000" or "200000".
+ * Empty means "not declared" (`null`). Text that is not a size is returned as
+ * typed, so the gateway refuses it with its own message instead of this page
+ * quietly saving a different number than the one the operator meant.
+ */
+export function parseTokenCount(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? Math.round(value) : String(value);
+  const text = String(value).trim().toLowerCase().replace(/[,_\s]/g, "");
+  if (!text) return null;
+  const match = /^(\d+(?:\.\d+)?)([km]?)$/.exec(text);
+  if (!match) return String(value).trim();
+  return Math.round(Number(match[1]) * (TOKEN_SUFFIX[match[2]] ?? 1));
+}
+
+/** A context limit for display: 1000000 -> "1M", 200000 -> "200K", 1048576 -> "1,048,576". */
+export function formatTokenCount(value) {
+  if (!Number.isInteger(value) || value <= 0) return "";
+  if (value >= 1_000_000 && value % 100_000 === 0) return `${value / 1_000_000}M`;
+  if (value >= 1_000 && value % 1_000 === 0) return `${value / 1_000}K`;
+  return value.toLocaleString("en-US");
+}
+
 /** The draft shape both the edit and the create drawer use. */
 export function draftFromRow(row) {
   return {
     displayName: row?.displayName ?? row?.model ?? "",
     enabled: row?.enabledByConfig !== false,
     capabilities: [...asArray(row?.capabilities)],
-    protocol: row?.protocol ?? ""
+    protocol: row?.protocol ?? "",
+    contextLimit: Number.isInteger(row?.contextLimit) ? String(row.contextLimit) : ""
   };
 }
 
@@ -188,7 +217,8 @@ export function draftFromCandidate({
   capabilities = [],
   displayName = null,
   enabled = true,
-  protocol = ""
+  protocol = "",
+  contextLimit = ""
 }) {
   return {
     provider: provider ?? "",
@@ -196,7 +226,8 @@ export function draftFromCandidate({
     displayName: displayName ?? model ?? "",
     enabled,
     capabilities: [...capabilities],
-    protocol
+    protocol,
+    contextLimit: Number.isInteger(contextLimit) ? String(contextLimit) : (contextLimit ?? "")
   };
 }
 
@@ -233,7 +264,8 @@ export function editorFromRow(row) {
       // turn a provider-off model into a permanently disabled declaration.
       enabled: row ? row.enabledByConfig !== false && !row.disabledBySwitch : true,
       capabilities: row?.capabilities ?? [],
-      protocol: row?.protocol ?? ""
+      protocol: row?.protocol ?? "",
+      contextLimit: row?.contextLimit ?? ""
     })
   };
 }
@@ -245,13 +277,17 @@ export function toggleCapability(capabilities, capabilityId) {
     : [...list, capabilityId];
 }
 
-/** Only the fields the API accepts. Empty protocol means "no override". */
+/**
+ * Only the fields the API accepts. Empty protocol means "no override"; an empty
+ * context limit means "not declared" and clears a saved one.
+ */
 export function buildDraftPayload(draft) {
   return {
     displayName: asString(draft?.displayName).trim(),
     enabled: draft?.enabled !== false,
     capabilities: asArray(draft?.capabilities),
-    protocol: draft?.protocol ? draft.protocol : null
+    protocol: draft?.protocol ? draft.protocol : null,
+    contextLimit: parseTokenCount(draft?.contextLimit)
   };
 }
 

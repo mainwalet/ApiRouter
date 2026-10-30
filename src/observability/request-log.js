@@ -55,13 +55,22 @@ function capabilityList(value) {
   return [...new Set(value.filter((item) => typeof item === "string" && /^[a-z_]{2,40}$/.test(item)))].slice(0, MAX_REQUIREMENTS);
 }
 
+function tokenCount(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? Math.round(number) : null;
+}
+
 function exclusionList(value) {
   if (!Array.isArray(value)) return [];
   return value.slice(0, MAX_EXCLUSIONS).map((item) => ({
     provider: typeof item?.provider === "string" && SAFE_TOKEN.test(item.provider) ? item.provider : null,
     model: typeof item?.model === "string" && SAFE_TOKEN.test(item.model) ? item.model : null,
     reason: typeof item?.reason === "string" && /^[a-z_]{2,60}$/.test(item.reason) ? item.reason : "excluded",
-    missing: capabilityList(item?.missing)
+    missing: capabilityList(item?.missing),
+    // Only a context exclusion carries sizes: plain token counts, nothing else.
+    ...(item?.reason === "context_limit_exceeded"
+      ? { contextLimit: tokenCount(item?.contextLimit), requestTokens: tokenCount(item?.requestTokens) }
+      : {})
   }));
 }
 

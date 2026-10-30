@@ -38,7 +38,7 @@ Point your client at the gateway (`http://localhost:8788`) using its guide:
 |---|---|---|
 | 🔀 | **Fallback chain** | Ordered list set in the control panel and followed exactly; every eligible key of a model is tried before the next model |
 | ❤️ | **Health-aware routing** | Automatic health/latency ordering when no chain is set; last working provider/model/key is tried first (20 min) |
-| 🧩 | **Model Configurator** | Declare capabilities per model; requests only reach models that support what they need |
+| 🧩 | **Model Configurator** | Declare capabilities and a context limit per model; requests only reach models that support what they need and can hold the request |
 | 🔑 | **Key rotation & cooldowns** | Per-key failure handling, so one bad key never disables the rest |
 | 🌐 | **Multi-protocol** | Claude Messages, OpenAI Responses, OpenAI Chat, Gemini, generic OpenAI-compatible |
 | 📊 | **Control panel** | Health, models, requests, Live Logs, analytics, playground, custom endpoints |
@@ -80,6 +80,7 @@ Router --prod             # production mode
 - **Nothing selected:** automatic health/latency order.
 - **Models selected (Configure → Fallback Chain):** your order first, then all unselected models by health; retried once per target after transient failures only.
 - Disabled models (Models page Switch) are never tried; no cooldown or health change.
+- **Context limit:** set a model's context limit (tokens) in the Model Configurator (`1m`, `500k` or `200000`). A request larger than that limit skips the model, and the walk goes on to the next model that can hold it, in your chain order. Example: with limits 1M, 500k, 200k and 700k in that chain order, a 600k-token request tries the 1M model, then the 700k one. A model with no limit set is never skipped for size. The request size is an estimate (about 4 characters per token, media counted separately); if every model is too small the gateway answers `400 context_length_exceeded` ("prompt is too long") without calling any provider.
 - Sessions: send `X-Multi-AI-Session-ID` to keep the remembered target per session.
 - **Reset Fallback** clears remembered targets only.
 

@@ -227,37 +227,86 @@ export function inferCapabilities() {
 }
 
 /**
+ * The largest context limit the configurator accepts, in tokens. It only exists
+ * to refuse typos (an extra zero) and nonsense; no real model comes close.
+ */
+export const MAX_CONTEXT_LIMIT = 100_000_000;
+
+/**
+ * Normalizes a declared context limit (tokens) into a positive integer, or
+ * `null` for "not declared". Accepts a number or a plain numeric string; anything
+ * else (zero, negative, NaN, text, an absurd size) is `null`, never a guess.
+ */
+export function normalizeContextLimit(value) {
+  if (value === undefined || value === null) return null;
+  const number = typeof value === "string" ? (value.trim() === "" ? NaN : Number(value.trim())) : value;
+  if (typeof number !== "number" || !Number.isFinite(number)) return null;
+  const whole = Math.floor(number);
+  if (whole < 1 || whole > MAX_CONTEXT_LIMIT) return null;
+  return whole;
+}
+
+/**
+ * True when a request of `requestTokens` cannot fit the model's declared
+ * context. A model with NO declared limit is never excluded: an unknown limit is
+ * not evidence that the request does not fit, so an undeclared model keeps
+ * behaving exactly as it did before limits existed. An unknown request size
+ * (0 / missing) excludes nothing either.
+ */
+export function exceedsContextLimit(contextLimit, requestTokens) {
+  const limit = normalizeContextLimit(contextLimit);
+  const size = Number(requestTokens);
+  if (limit === null || !Number.isFinite(size) || size <= 0) return false;
+  return size > limit;
+}
+
+/**
  * The routing decision for one candidate.
  *
  * Returns `{ eligible, reason, missing }` where `reason` is a fixed label safe
  * to log and show (never upstream text):
  *
- *   model_config_disabled    the unified configuration switched it off
+ *   model_config_disabled      the unified configuration switched it off
  *   capability_not_configured  the model does not declare a required capability
- *   adapter_unsupported      it declares it, but no adapter can execute it
+ *   adapter_unsupported        it declares it, but no adapter can execute it
+ *   context_limit_exceeded     the request is larger than the model's declared context limit
  */
-export function evaluateCandidate({ required = [], declared = [], protocols = [], enabled = true } = {}) {
+export function evaluateCandidate({
+  required = [],
+  declared = [],
+  protocols = [],
+  enabled = true,
+  contextLimit = null,
+  requestTokens = 0
+} = {}) {
   if (enabled === false) return { eligible: false, reason: "model_config_disabled", missing: [] };
   const needs = normalizeRequirements(required);
-  if (needs.length === 0) return { eligible: true, reason: null, missing: [] };
 
-  const have = new Set(normalizeCapabilities(declared).capabilities);
-  const executable = adapterCapabilities(protocols);
+  if (needs.length > 0) {
+    const have = new Set(normalizeCapabilities(declared).capabilities);
+    const executable = adapterCapabilities(protocols);
 
-  const missingConfigured = needs.filter((id) => !have.has(id));
-  if (missingConfigured.length > 0) {
-    return { eligible: false, reason: "capability_not_configured", missing: missingConfigured };
+    const missingConfigured = needs.filter((id) => !have.has(id));
+    if (missingConfigured.length > 0) {
+      return { eligible: false, reason: "capability_not_configured", missing: missingConfigured };
+    }
+    const missingAdapter = needs.filter((id) => !executable.has(id));
+    if (missingAdapter.length > 0) {
+      return { eligible: false, reason: "adapter_unsupported", missing: missingAdapter };
+    }
+    // Every need is executable by SOME protocol of the target, but one call goes
+    // out over ONE protocol: at least one protocol must carry them all together.
+    // (e.g. structured_output from openai-chat plus computer_use from anthropic is
+    // not a route if neither protocol can do both.)
+    if (protocolsExecuting(needs, protocols).length === 0) {
+      return { eligible: false, reason: "adapter_unsupported", missing: needs };
+    }
   }
-  const missingAdapter = needs.filter((id) => !executable.has(id));
-  if (missingAdapter.length > 0) {
-    return { eligible: false, reason: "adapter_unsupported", missing: missingAdapter };
-  }
-  // Every need is executable by SOME protocol of the target, but one call goes
-  // out over ONE protocol: at least one protocol must carry them all together.
-  // (e.g. structured_output from openai-chat plus computer_use from anthropic is
-  // not a route if neither protocol can do both.)
-  if (protocolsExecuting(needs, protocols).length === 0) {
-    return { eligible: false, reason: "adapter_unsupported", missing: needs };
+
+  // Capabilities first, size last: a model that cannot do the job at all is
+  // reported for that, and only a model that CAN do it is then asked to hold it.
+  if (exceedsContextLimit(contextLimit, requestTokens)) {
+    return { eligible: false, reason: "context_limit_exceeded", missing: [] };
   }
   return { eligible: true, reason: null, missing: [] };
 }
@@ -278,14 +327,19 @@ export function protocolsExecuting(required = [], protocols = []) {
 
 /**
  * Filters a target list for one request. `lookup(target)` returns the effective
- * model entry (`{ enabled, capabilities }`) from the unified configuration.
+ * model entry (`{ enabled, capabilities, contextLimit }`) from the unified
+ * configuration. `options.requestTokens` is the estimated size of the request:
+ * a model whose declared context limit is smaller is not a candidate, so the
+ * fallback walk goes from one model that can hold the request straight to the
+ * next, never through one that would only reject it.
  *
  * The input is never mutated and every exclusion carries a reason and the
  * capability ids that caused it, so a caller can explain the route it did not
  * take without guessing. Exclusions are de-duplicated by provider/model: the
  * reason is a property of the model, not of each key.
  */
-export function filterTargetsByRequirements(targets, required = [], lookup = () => null) {
+export function filterTargetsByRequirements(targets, required = [], lookup = () => null, options = {}) {
+  const requestTokens = Number(options?.requestTokens) || 0;
   const eligible = [];
   const exclusions = [];
   const seen = new Set();
@@ -296,7 +350,9 @@ export function filterTargetsByRequirements(targets, required = [], lookup = () 
       required,
       declared: entry.capabilities ?? [],
       protocols: target?.protocols ?? [],
-      enabled: entry.enabled !== false
+      enabled: entry.enabled !== false,
+      contextLimit: entry.contextLimit ?? null,
+      requestTokens
     });
 
     if (verdict.eligible) {
@@ -318,7 +374,11 @@ export function filterTargetsByRequirements(targets, required = [], lookup = () 
       provider: target?.provider ?? null,
       model: target?.model ?? null,
       reason: verdict.reason,
-      missing: verdict.missing
+      missing: verdict.missing,
+      // Only a context exclusion carries the numbers behind it.
+      ...(verdict.reason === "context_limit_exceeded"
+        ? { contextLimit: normalizeContextLimit(entry.contextLimit), requestTokens }
+        : {})
     });
   }
 
@@ -331,6 +391,30 @@ export function noCapableRouteMessage(required) {
   const list = needs.map(capabilityLabel).join(", ");
   return `No configured model can serve this request: it requires ${list || "capabilities no model declares"}.`
     + " Configure a compatible model in the Model Configurator.";
+}
+
+/** True when the request failed only because every model that could serve it is too small. */
+export function isContextLimitFailure(exclusions) {
+  const list = Array.isArray(exclusions) ? exclusions : [];
+  return list.some((entry) => entry?.reason === "context_limit_exceeded");
+}
+
+/**
+ * The message for a request no model's declared context limit can hold. It names
+ * the request size and the largest limit among the models that were skipped, so
+ * the operator (and a client that compacts its history, which reads "too long")
+ * knows exactly how much has to go.
+ */
+export function contextLimitMessage(exclusions, requestTokens) {
+  const limits = (Array.isArray(exclusions) ? exclusions : [])
+    .filter((entry) => entry?.reason === "context_limit_exceeded")
+    .map((entry) => normalizeContextLimit(entry.contextLimit))
+    .filter((limit) => limit !== null);
+  const size = Math.max(0, Math.round(Number(requestTokens) || 0));
+  const largest = limits.length > 0 ? Math.max(...limits) : null;
+  return `prompt is too long: about ${size} tokens`
+    + (largest !== null ? ` > ${largest} maximum` : " exceeds the context limit")
+    + " of every model that can serve this request. Raise a model's context limit in the Model Configurator or shorten the conversation.";
 }
 
 /**

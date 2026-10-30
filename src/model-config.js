@@ -1,7 +1,15 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { CAPABILITY_IDS, DEFAULT_CAPABILITIES, inferCapabilities, normalizeCapabilities, unsupportedCapabilities } from "./model-capabilities.js";
+import {
+  CAPABILITY_IDS,
+  DEFAULT_CAPABILITIES,
+  MAX_CONTEXT_LIMIT,
+  inferCapabilities,
+  normalizeCapabilities,
+  normalizeContextLimit,
+  unsupportedCapabilities
+} from "./model-capabilities.js";
 
 /**
  * The unified model configuration: ONE normalized source for which provider/model
@@ -185,6 +193,22 @@ function cleanProtocol(value) {
   return protocol;
 }
 
+/**
+ * A declared context limit, in tokens. `null` (or an empty string) means "not
+ * declared": the model is never excluded for size. Anything else must be a whole
+ * number of at least 1; a typo is refused on a write instead of being saved as
+ * a limit that silently excludes (or never excludes) the model.
+ */
+function cleanContextLimit(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+  const limit = normalizeContextLimit(value);
+  if (limit === null || (typeof value === "number" && !Number.isInteger(value))) {
+    throw bad(`contextLimit must be a whole number of tokens between 1 and ${MAX_CONTEXT_LIMIT}, or empty for "not declared"`, "invalid_context_limit");
+  }
+  return limit;
+}
+
 function cloneEntry(entry) {
   return {
     ...entry,
@@ -225,6 +249,9 @@ export function normalizeStoredEntry(raw) {
       enabled: raw.enabled !== false,
       capabilities,
       protocol: raw.protocol == null ? null : cleanProtocol(raw.protocol),
+      // A stored limit that is not a valid size is forgiven as "not declared":
+      // dropping the whole entry over it would lose the capabilities it carries.
+      contextLimit: normalizeContextLimit(raw.contextLimit),
       metadata: cleanMetadata(raw.metadata),
       version,
       createdAt: Number.isFinite(raw.createdAt) ? raw.createdAt : null,
@@ -256,6 +283,8 @@ function buildEntry(input, { existing = null, now = Date.now() } = {}) {
   const protocol = input.protocol === undefined ? (existing?.protocol ?? null) : cleanProtocol(input.protocol);
   const metadata = input.metadata === undefined ? (existing?.metadata ?? {}) : cleanMetadata(input.metadata);
   const displayName = cleanDisplayName(input.displayName, existing?.displayName ?? model);
+  // Omitted keeps the saved limit; an explicit null / "" clears it.
+  const contextLimit = input.contextLimit === undefined ? (existing?.contextLimit ?? null) : cleanContextLimit(input.contextLimit);
 
   return {
     entry: {
@@ -266,6 +295,7 @@ function buildEntry(input, { existing = null, now = Date.now() } = {}) {
       enabled,
       capabilities,
       protocol,
+      contextLimit,
       metadata,
       version: MODEL_CONFIG_SCHEMA_VERSION,
       createdAt: existing?.createdAt ?? now,
@@ -665,6 +695,9 @@ export class ModelConfigStore {
         executableCapabilities: executable,
         unsupportedCapabilities: unsupported,
         protocol: stored?.protocol ?? null,
+        // Tokens the model can hold, or null when nobody declared it. Routing
+        // skips a model only when this is set AND the request is larger.
+        contextLimit: stored?.contextLimit ?? null,
         metadata: stored ? structuredClone(stored.metadata ?? {}) : {},
         protocols,
         keyCount: group.keyCount,

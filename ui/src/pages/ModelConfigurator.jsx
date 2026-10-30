@@ -27,6 +27,7 @@ import {
   capabilityGroups,
   capabilityState,
   editorFromRow,
+  formatTokenCount,
   filterModels,
   findModelRow,
   normalizeModelConfigPayload,
@@ -269,6 +270,19 @@ export default function ModelConfigurator() {
           })()}
         </div>
       )
+    },
+    {
+      key: "contextLimit",
+      header: "Context limit",
+      sortable: true,
+      get: (row) => row.contextLimit ?? 0,
+      render: (row) => row.contextLimit
+        ? (
+          <span className="mono nowrap" title={`${row.contextLimit.toLocaleString("en-US")} tokens. Requests larger than this skip this model.`}>
+            {formatTokenCount(row.contextLimit)}
+          </span>
+        )
+        : <span className="tiny dim" title="No limit declared: this model is never skipped for request size.">not set</span>
     },
     {
       key: "selection",
@@ -642,6 +656,23 @@ function EditorDrawer({ editor, models, groups, providers, adapters, busy, error
           </select>
           <p className="field__hint">
             Only needed when this model must be reached by one specific wire format. The provider must offer it.
+          </p>
+        </div>
+
+        <div className="field">
+          <label className="field__label" htmlFor="mc-context-limit">Context limit (tokens)</label>
+          <input
+            id="mc-context-limit"
+            className="input"
+            inputMode="text"
+            value={draft.contextLimit ?? ""}
+            onChange={(event) => onChange({ ...draft, contextLimit: event.target.value })}
+            placeholder="e.g. 200000, 200k or 1m"
+          />
+          <p className="field__hint">
+            The most tokens this model can take in one request. A request larger than this skips the model, and the
+            fallback goes on to the next model that can hold it. Leave empty if unknown: the model is then never
+            skipped for size.
           </p>
         </div>
 

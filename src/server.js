@@ -42,7 +42,9 @@ import {
 } from "./intent-detect.js";
 import { applySystemPrompt, loadSystemPrompt } from "./system-prompt.js";
 import {
+  contextLimitMessage,
   filterTargetsByRequirements,
+  isContextLimitFailure,
   noCapableRouteMessage,
   requestedModelCapabilityMessage,
   validateRequestedModel
@@ -783,10 +785,16 @@ async function proxy(req, res, protocol, pathname) {
     const entry = modelIndex.get(`${target.provider}/${target.model}`);
     return pinnedRequest && entry ? { ...entry, enabled: true } : entry;
   };
+  // `requestTokens` is the request's estimated size: a model whose declared
+  // context limit is smaller is not a candidate, so the fallback walk goes from
+  // one model that can hold the request to the next, never through one that
+  // could only reject it. A model with no declared limit is never excluded.
+  const requestTokens = profile.estimatedInputTokens;
   let { eligible: capableTargets, exclusions } = filterTargetsByRequirements(
     enabledTargets,
     profile.required,
-    capabilityLookup
+    capabilityLookup,
+    { requestTokens }
   );
 
   // The ApiRouter system prompt goes in front of the client's own system prompt,
@@ -809,7 +817,7 @@ async function proxy(req, res, protocol, pathname) {
   if (intentOutputs.length > 0 && !pinnedRequest) {
     const intentRoutable = protocol === "openai-chat" || protocol === "gemini";
     const withIntent = intentRoutable
-      ? filterTargetsByRequirements(enabledTargets, [...profile.required, ...intentOutputs], capabilityLookup).eligible
+      ? filterTargetsByRequirements(enabledTargets, [...profile.required, ...intentOutputs], capabilityLookup, { requestTokens }).eligible
       : [];
     if (withIntent.length > 0) {
       capableTargets = withIntent;
@@ -909,6 +917,28 @@ async function proxy(req, res, protocol, pathname) {
       outcome: "failed", errorType: "models_disabled", errorMessage: message, attempts
     });
     return json(res, 503, { error: { message, type: "models_disabled" } }, { "x-multi-ai-session-id": sessionInfo.id });
+  }
+
+  if (enabledTargets.length > 0 && capableTargets.length === 0 && isContextLimitFailure(exclusions)) {
+    // Every model that could serve the request is too small to hold it. Retrying
+    // can never help, so this is a client error (400), not a 503 that a client
+    // would retry; the "prompt is too long" wording is what coding clients read
+    // to compact their history.
+    const message = contextLimitMessage(exclusions, requestTokens);
+    recordRequest({
+      pendingSeq: liveSeq,
+      id: sessionInfo.id, receivedAt, protocol, requestedModel, httpStatus: 400,
+      outcome: "failed", errorType: "context_length_exceeded", errorMessage: message, attempts
+    });
+    return json(res, 400, {
+      error: {
+        message,
+        type: "context_length_exceeded",
+        code: "context_length_exceeded",
+        estimated_input_tokens: requestTokens,
+        excluded_candidates: excludedCandidates
+      }
+    }, { "x-multi-ai-session-id": sessionInfo.id });
   }
 
   // Targets exist, but none declares (and can execute) what the payload needs.

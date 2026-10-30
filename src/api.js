@@ -717,6 +717,7 @@ export function createApi({
         executableCapabilities: row.executableCapabilities,
         unsupportedCapabilities: row.unsupportedCapabilities,
         protocol: row.protocol,
+        contextLimit: row.contextLimit,
         metadata: row.metadata,
         protocols: row.protocols,
         keyCount: row.keyCount,

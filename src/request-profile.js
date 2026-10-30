@@ -211,6 +211,58 @@ function reasoningRequested(body) {
 
 const orderCapabilities = (set) => CAPABILITY_IDS.filter((id) => set.has(id));
 
+// A base64 payload is not text: counting its characters at 4 per token would make
+// a 1 MB image look like ~250,000 tokens and wrongly rule out every smaller model.
+// Each payload is replaced by a bounded estimate instead (about 750 base64
+// characters per token, capped), the same figure /v1/messages/count_tokens uses.
+const MEDIA_CHARS_PER_TOKEN = 750;
+const MEDIA_TOKEN_CAP = 8000;
+const MIN_INLINE_MEDIA_CHARS = 1000;
+
+/** The request fields that carry what the model reads, in every supported client protocol. */
+const PROMPT_FIELDS = [
+  "system", "messages", "tools", "functions", "tool_config", "toolConfig",
+  "input", "instructions", "contents", "systemInstruction", "system_instruction"
+];
+
+/**
+ * A cheap estimate of the INPUT tokens a request carries: the prompt, the system
+ * prompt and the tool definitions, at about 4 characters per token. It is used
+ * to keep a request away from a model whose declared context limit is smaller,
+ * so it is deliberately an estimate, never a count: it must not be precise
+ * enough to be mistaken for billing, and it must never over-count media.
+ *
+ * Only the prompt fields are measured (generation settings and metadata are not
+ * part of the context), and the output budget (`max_tokens`) is not added: the
+ * limit a gateway can hold a request to is the one it can actually measure.
+ */
+export function estimateRequestTokens(body) {
+  if (!isObject(body)) return 0;
+  const prompt = {};
+  for (const field of PROMPT_FIELDS) {
+    if (body[field] !== undefined) prompt[field] = body[field];
+  }
+  if (Object.keys(prompt).length === 0) return 0;
+
+  let mediaTokens = 0;
+  const addMedia = (length) => { mediaTokens += Math.min(Math.ceil(length / MEDIA_CHARS_PER_TOKEN), MEDIA_TOKEN_CAP); };
+  let text = "";
+  try {
+    text = JSON.stringify(prompt, (key, value) => {
+      if (typeof value !== "string") return value;
+      // Anthropic `source.data`, Gemini `inlineData.data`, OpenAI `input_audio.data`.
+      if (key === "data" && value.length >= MIN_INLINE_MEDIA_CHARS) { addMedia(value.length); return ""; }
+      // An inline `data:` URL (OpenAI image_url, Responses input_image).
+      if (value.startsWith("data:") && value.length >= MIN_INLINE_MEDIA_CHARS) { addMedia(value.length); return ""; }
+      return value;
+    }) || "";
+  } catch {
+    // A body that cannot be serialized (a cycle) has no measurable size.
+    return 0;
+  }
+  return Math.ceil(text.length / 4) + mediaTokens;
+}
+
 /**
  * Analyses one request.
  *
@@ -220,7 +272,8 @@ const orderCapabilities = (set) => CAPABILITY_IDS.filter((id) => set.has(id));
  *   preferred: string[],
  *   media: {image:boolean,audio:boolean,video:boolean,file:boolean},
  *   stream: boolean,
- *   reasons: string[]
+ *   reasons: string[],
+ *   estimatedInputTokens: number
  * }}
  */
 export function analyzeRequest({ protocol = null, pathname = "", body = {}, stream = false } = {}) {
@@ -295,6 +348,7 @@ export function analyzeRequest({ protocol = null, pathname = "", body = {}, stre
     preferred: orderCapabilities(preferred),
     media,
     stream: wantsStream,
-    reasons
+    reasons,
+    estimatedInputTokens: estimateRequestTokens(body)
   };
 }
