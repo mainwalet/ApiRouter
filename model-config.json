@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "96e2f01c-973a-487c-abdc-f554894a4734",
-  "updatedAt": "2026-10-30T19:23:21.644Z",
+  "revision": "8c2c8d32-cebd-4ad7-85d3-5e5251709003",
+  "updatedAt": "2026-10-30T19:23:43.881Z",
   "models": [
     {
       "id": "mc_8f0a2ef8f5b577ce",
@@ -637,14 +637,78 @@
         "text_output",
         "tool_calling",
         "structured_output",
-        "streaming"
+        "streaming",
+        "reasoning"
       ],
       "protocol": null,
       "contextLimit": null,
       "metadata": {},
       "version": 1,
       "createdAt": 1793388201644,
-      "updatedAt": 1793388201644
+      "updatedAt": 1793388223881
+    },
+    {
+      "id": "mc_357eb59f297d9d52",
+      "provider": "custom-onerouter",
+      "model": "internlm/atria-dawn-preview:free",
+      "displayName": "internlm/atria-dawn-preview:free",
+      "enabled": true,
+      "capabilities": [
+        "text_input",
+        "text_output",
+        "tool_calling",
+        "structured_output",
+        "streaming",
+        "reasoning"
+      ],
+      "protocol": null,
+      "contextLimit": null,
+      "metadata": {},
+      "version": 1,
+      "createdAt": 1793388223881,
+      "updatedAt": 1793388223881
+    },
+    {
+      "id": "mc_9b5e94ed1ee149e5",
+      "provider": "custom-onerouter",
+      "model": "qwen/qwen3.8-27b-abliterated-cyber:free",
+      "displayName": "qwen/qwen3.8-27b-abliterated-cyber:free",
+      "enabled": true,
+      "capabilities": [
+        "text_input",
+        "text_output",
+        "tool_calling",
+        "structured_output",
+        "streaming",
+        "reasoning"
+      ],
+      "protocol": null,
+      "contextLimit": null,
+      "metadata": {},
+      "version": 1,
+      "createdAt": 1793388223881,
+      "updatedAt": 1793388223881
+    },
+    {
+      "id": "mc_c38617e9234f2d55",
+      "provider": "custom-onerouter",
+      "model": "qwen/qwen3.8-27b:free",
+      "displayName": "qwen/qwen3.8-27b:free",
+      "enabled": true,
+      "capabilities": [
+        "text_input",
+        "text_output",
+        "tool_calling",
+        "structured_output",
+        "streaming",
+        "reasoning"
+      ],
+      "protocol": null,
+      "contextLimit": null,
+      "metadata": {},
+      "version": 1,
+      "createdAt": 1793388223881,
+      "updatedAt": 1793388223881
     }
   ]
 }
