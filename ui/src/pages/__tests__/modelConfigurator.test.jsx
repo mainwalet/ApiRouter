@@ -102,6 +102,16 @@ describe("Model Configurator page", () => {
     expect(renderToStaticMarkup(<ModelConfigurator />)).toContain("Bulk capabilities");
   });
 
+  it("has a checkbox per model and a select-all checkbox, with nothing selected at first", () => {
+    const markup = renderToStaticMarkup(<ModelConfigurator />);
+    expect(markup).toContain("Select all models shown");
+    expect(markup).toContain("Select llama");
+    expect(markup).toContain("Select flash");
+    // No selection bar until something is ticked.
+    expect(markup).not.toContain("Clear selection");
+    expect(markup).not.toMatch(/models? selected/);
+  });
+
   it("renders the effective routing state separately from the declared source", () => {
     const markup = renderToStaticMarkup(<ModelConfigurator />);
     expect(markup).toContain("Llama");

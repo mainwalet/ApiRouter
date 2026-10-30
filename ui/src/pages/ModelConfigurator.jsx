@@ -36,9 +36,14 @@ import {
   findModelRow,
   normalizeModelConfigPayload,
   providerChoices,
+  rowSelectionKey,
   rowTone,
+  selectedRows,
   selectionLabel,
-  toggleCapability
+  selectionState,
+  setRowsSelected,
+  toggleCapability,
+  toggleRowSelection
 } from "../lib/modelConfig.js";
 import { providerLabel, protocolLabel } from "../lib/format.js";
 
@@ -70,6 +75,7 @@ export default function ModelConfigurator() {
   const [removing, setRemoving] = useState(null);
   const [formError, setFormError] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
 
   const view = useMemo(() => normalizeModelConfigPayload(config.data), [config.data]);
   const groups = useMemo(() => capabilityGroups(view.schema), [view.schema]);
@@ -78,6 +84,9 @@ export default function ModelConfigurator() {
     [view.models, search, provider, status, source]
   );
   const providers = useMemo(() => providerChoices(view.models), [view.models]);
+  // Only rows that still exist: a reload can drop a model that was ticked.
+  const chosen = useMemo(() => selectedRows(view.models, selected), [view.models, selected]);
+  const visibleState = selectionState(filtered, selected);
 
   const run = async (action, success) => {
     setBusy(true);
@@ -191,6 +200,30 @@ export default function ModelConfigurator() {
   };
 
   const columns = useMemo(() => [
+    {
+      key: "select",
+      width: 36,
+      header: (
+        <input
+          type="checkbox"
+          aria-label="Select all models shown"
+          title="Select all models shown"
+          checked={visibleState === "all"}
+          ref={(element) => { if (element) element.indeterminate = visibleState === "some"; }}
+          disabled={filtered.length === 0}
+          onChange={() => setSelected((current) => setRowsSelected(current, filtered, visibleState !== "all"))}
+        />
+      ),
+      render: (row) => (
+        <input
+          type="checkbox"
+          aria-label={`Select ${row.model}`}
+          checked={selected.has(rowSelectionKey(row))}
+          onClick={(event) => event.stopPropagation()}
+          onChange={() => setSelected((current) => toggleRowSelection(current, row))}
+        />
+      )
+    },
     {
       key: "model",
       header: "Model",
@@ -338,7 +371,7 @@ export default function ModelConfigurator() {
         </span>
       )
     }
-  ], [busy, rowTone]);
+  ], [busy, selected, filtered, visibleState]);
 
   if (config.loading && !config.data) {
     return (
@@ -374,7 +407,8 @@ export default function ModelConfigurator() {
               onClick={() => setBulkOpen(true)}
               title="Add or remove capabilities on many models at once"
             >
-              <Icon name="plus" className="btn__icon" size={12} /><span className="btn__label">Bulk capabilities</span>
+              <Icon name="plus" className="btn__icon" size={12} />
+              <span className="btn__label">{chosen.length > 0 ? `Bulk capabilities (${chosen.length})` : "Bulk capabilities"}</span>
             </button>
             <button type="button" className="btn btn--primary" disabled={busy} onClick={openCreate}>
               <Icon name="plus" className="btn__icon" size={12} /><span className="btn__label">Add model</span>
@@ -408,6 +442,17 @@ export default function ModelConfigurator() {
         </EmptyState>
       ) : (
         <div className="panel section">
+          {chosen.length > 0 ? (
+            <div className="panel__body row row--wrap" style={{ gap: "var(--sp-3)", alignItems: "center" }} role="status">
+              <strong className="tiny">{chosen.length} {chosen.length === 1 ? "model" : "models"} selected</strong>
+              <button type="button" className="btn btn--sm btn--primary" disabled={busy} onClick={() => setBulkOpen(true)}>
+                Bulk capabilities
+              </button>
+              <button type="button" className="btn btn--sm" disabled={busy} onClick={() => setSelected(new Set())}>
+                Clear selection
+              </button>
+            </div>
+          ) : null}
           <FilterBar
             actions={
               <span className="tiny dim nowrap">
@@ -494,6 +539,7 @@ export default function ModelConfigurator() {
           groups={groups}
           allRows={view.models}
           filteredRows={filtered}
+          selectedRowsList={chosen}
           filtersActive={Boolean(search.trim() || provider || status || source)}
           busy={busy}
           onClose={() => setBulkOpen(false)}
@@ -524,15 +570,16 @@ export default function ModelConfigurator() {
  * Add or remove capabilities on many models at once.
  *
  * Each capability is "keep" (default), "add to every chosen model" or "remove
- * from every chosen model". The scope is either the models the table currently
- * shows (so the filters pick the set) or every model. The dialog states how
+ * from every chosen model". The scope is the models ticked in the table, the models
+ * the table currently shows (so the filters pick the set), or every model. The dialog states how
  * many models would actually change before anything is saved.
  */
-function BulkCapabilitiesModal({ groups, allRows, filteredRows, filtersActive, busy, onClose, onApply }) {
-  const [scope, setScope] = useState("filtered");
+function BulkCapabilitiesModal({ groups, allRows, filteredRows, selectedRowsList = [], filtersActive, busy, onClose, onApply }) {
+  // Ticked models win: opening the dialog with a selection means "these ones".
+  const [scope, setScope] = useState(selectedRowsList.length > 0 ? "selected" : "filtered");
   const [ops, setOps] = useState({});
 
-  const rows = scope === "all" ? allRows : filteredRows;
+  const rows = scope === "all" ? allRows : scope === "selected" ? selectedRowsList : filteredRows;
   const add = Object.keys(ops).filter((id) => ops[id] === "add");
   const remove = Object.keys(ops).filter((id) => ops[id] === "remove");
   const preview = bulkPreview(rows, { add, remove });
@@ -576,6 +623,9 @@ function BulkCapabilitiesModal({ groups, allRows, filteredRows, filtersActive, b
         <div className="field">
           <label className="field__label" htmlFor="bulk-scope">Apply to</label>
           <select id="bulk-scope" className="select" value={scope} onChange={(event) => setScope(event.target.value)}>
+            {selectedRowsList.length > 0 ? (
+              <option value="selected">Selected models ({selectedRowsList.length})</option>
+            ) : null}
             <option value="filtered">
               {filtersActive ? `Models matching the current filters (${filteredRows.length})` : `All models shown (${filteredRows.length})`}
             </option>

@@ -349,3 +349,41 @@ export function bulkCapabilityCoverage(rows, capabilityId) {
   if (count === 0) return "none";
   return count === list.length ? "all" : "some";
 }
+
+/** The stable key one row is selected by. */
+export const rowSelectionKey = (row) => `${row.provider}/${row.model}`;
+
+/** A new Set with `row` selected or unselected (never mutates the old one). */
+export function toggleRowSelection(selected, row) {
+  const next = new Set(selected ?? []);
+  const key = rowSelectionKey(row);
+  if (next.has(key)) next.delete(key); else next.add(key);
+  return next;
+}
+
+/** A new Set with every row in `rows` selected (on) or unselected (off). */
+export function setRowsSelected(selected, rows, on) {
+  const next = new Set(selected ?? []);
+  for (const row of asArray(rows)) {
+    if (on) next.add(rowSelectionKey(row)); else next.delete(rowSelectionKey(row));
+  }
+  return next;
+}
+
+/** "all", "some" or "none" of `rows` are in the selection (the header checkbox). */
+export function selectionState(rows, selected) {
+  const list = asArray(rows);
+  if (list.length === 0) return "none";
+  const chosen = list.filter((row) => selected?.has(rowSelectionKey(row))).length;
+  if (chosen === 0) return "none";
+  return chosen === list.length ? "all" : "some";
+}
+
+/**
+ * The selected rows, in table order. A key whose model has since disappeared
+ * (a provider was removed, the list reloaded) is ignored instead of being sent.
+ */
+export function selectedRows(models, selected) {
+  if (!selected || selected.size === 0) return [];
+  return asArray(models).filter((row) => selected.has(rowSelectionKey(row)));
+}

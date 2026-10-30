@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  rowSelectionKey,
+  selectedRows,
+  selectionState,
+  setRowsSelected,
+  toggleRowSelection,
   bulkCapabilityCoverage,
   bulkPreview,
   bulkTargets,
@@ -306,5 +311,36 @@ describe("model config view model", () => {
     expect(bulkCapabilityCoverage(rows, "tool_calling")).toBe("some");
     expect(bulkCapabilityCoverage(rows, "image_input")).toBe("none");
     expect(bulkCapabilityCoverage([], "streaming")).toBe("none");
+  });
+
+  it("keeps a manual selection as an immutable set of provider/model keys", () => {
+    const a = row({ provider: "groq", model: "a" });
+    const b = row({ provider: "groq", model: "b" });
+    const c = row({ provider: "gemini", model: "c" });
+
+    const empty = new Set();
+    const one = toggleRowSelection(empty, a);
+    expect(empty.size).toBe(0);
+    expect([...one]).toEqual([rowSelectionKey(a)]);
+    expect(toggleRowSelection(one, a).size).toBe(0);
+
+    expect(selectionState([a, b, c], one)).toBe("some");
+    expect(selectionState([a], one)).toBe("all");
+    expect(selectionState([b, c], one)).toBe("none");
+    expect(selectionState([], one)).toBe("none");
+
+    const all = setRowsSelected(one, [a, b, c], true);
+    expect(selectionState([a, b, c], all)).toBe("all");
+    const cleared = setRowsSelected(all, [a, b], false);
+    expect([...cleared]).toEqual([rowSelectionKey(c)]);
+  });
+
+  it("returns only selected rows that still exist, in table order", () => {
+    const a = row({ provider: "groq", model: "a" });
+    const b = row({ provider: "groq", model: "b" });
+    const selected = new Set([rowSelectionKey(b), rowSelectionKey(a), "gone/model"]);
+    expect(selectedRows([a, b], selected)).toEqual([a, b]);
+    expect(selectedRows([a, b], new Set())).toEqual([]);
+    expect(selectedRows([a, b], null)).toEqual([]);
   });
 });
