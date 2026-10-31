@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "7d571faf-8382-4287-8864-d174a7e01fe0",
-  "updatedAt": "2026-10-31T07:28:59.239Z",
+  "revision": "fa05302d-ac9f-48c8-80c6-7173fb1315e7",
+  "updatedAt": "2026-10-31T07:30:03.418Z",
   "models": [
     {
       "id": "mc_8f0a2ef8f5b577ce",
@@ -742,7 +742,6 @@
         "text_input",
         "text_output",
         "tool_calling",
-        "image_input",
         "structured_output",
         "streaming",
         "reasoning"
@@ -752,7 +751,7 @@
       "metadata": {},
       "version": 1,
       "createdAt": 1793431714655,
-      "updatedAt": 1793431739239
+      "updatedAt": 1793431803418
     }
   ]
 }
