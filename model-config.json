@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "8c2c8d32-cebd-4ad7-85d3-5e5251709003",
-  "updatedAt": "2026-10-30T19:23:43.881Z",
+  "revision": "9b915180-aae7-4b2c-b8da-89f44a20f2d4",
+  "updatedAt": "2026-10-31T07:28:34.655Z",
   "models": [
     {
       "id": "mc_8f0a2ef8f5b577ce",
@@ -709,6 +709,50 @@
       "version": 1,
       "createdAt": 1793388223881,
       "updatedAt": 1793388223881
+    },
+    {
+      "id": "mc_0ac50bb2a76d35fe",
+      "provider": "custom-moonmath",
+      "model": "deepseek-v4.1-flash",
+      "displayName": "deepseek-v4.1-flash",
+      "enabled": true,
+      "capabilities": [
+        "text_input",
+        "text_output",
+        "tool_calling",
+        "image_input",
+        "structured_output",
+        "streaming",
+        "reasoning"
+      ],
+      "protocol": null,
+      "contextLimit": null,
+      "metadata": {},
+      "version": 1,
+      "createdAt": 1793431714655,
+      "updatedAt": 1793431714655
+    },
+    {
+      "id": "mc_0f8b2103eb17814d",
+      "provider": "custom-moonmath",
+      "model": "glm-5.3-flash",
+      "displayName": "glm-5.3-flash",
+      "enabled": true,
+      "capabilities": [
+        "text_input",
+        "text_output",
+        "tool_calling",
+        "image_input",
+        "structured_output",
+        "streaming",
+        "reasoning"
+      ],
+      "protocol": null,
+      "contextLimit": null,
+      "metadata": {},
+      "version": 1,
+      "createdAt": 1793431714655,
+      "updatedAt": 1793431714655
     }
   ]
 }
