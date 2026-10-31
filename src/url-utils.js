@@ -42,5 +42,12 @@ export function stripApiVersion(baseUrl) {
  * `stripApiVersion` is right. Both rules live here so the contrast is visible.
  */
 export function openAiSuffixPath(baseUrl, suffix) {
-  return /\/v\d+$/i.test(String(baseUrl || "")) ? suffix : "v1/" + suffix;
+  return OPENAI_API_ROOT.test(String(baseUrl || "")) ? suffix : "v1/" + suffix;
 }
+
+/**
+ * An OpenAI-compatible API root: a base that already ends in a version (`/v1`,
+ * `/v4`), or in Google's OpenAI-compatible root `/v1beta/openai`, where the
+ * version comes BEFORE the `openai` segment and `/v1` must not be added again.
+ */
+const OPENAI_API_ROOT = /\/v\d+$|\/v\d+(?:alpha|beta)\d*\/openai$/i;

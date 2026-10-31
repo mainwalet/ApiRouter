@@ -55,6 +55,13 @@ describe("Playground custom endpoint mode", () => {
     expect(markup).toContain("Router");
   });
 
+  it("starts with the provider's own temperature, so models that refuse one can still be tested", () => {
+    const markup = render([]);
+    expect(markup).toContain("provider default");
+    // Nothing has been chosen yet, so there is nothing to reset.
+    expect(markup).not.toContain("Use default");
+  });
+
   it("shows the loading skeleton, not the custom form, while the catalog loads", () => {
     const markup = render([], { loading: true });
     expect(markup).toContain("skeleton");

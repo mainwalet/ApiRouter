@@ -147,7 +147,10 @@ export default function Playground() {
   // failing model moves on to the next one, and only this provider is used.
   const [rotateModels, setRotateModels] = useState(readRotate);
   const [lastModels, setLastModels] = useState(readLastModels);
-  const [temperature, setTemperature] = useState(0.7);
+  // null = the provider's own default, so the field is not sent at all. Some models
+  // (OpenAI o-series / gpt-5, for one) refuse any temperature they did not choose, so a
+  // test that always sent 0.7 could never reach them. The slider turns it on.
+  const [temperature, setTemperature] = useState(null);
   const [maxTokens, setMaxTokens] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -439,7 +442,7 @@ export default function Playground() {
         images: attached,
         history,
         system: systemPrompt.trim() || null,
-        temperature: Number(temperature),
+        temperature: temperature === null ? null : Number(temperature),
         maxTokens: custom ? customMaxTokens(activeProtocol, maxTokens) : parseMaxTokens(maxTokens),
         stream: true
       });
@@ -529,7 +532,7 @@ export default function Playground() {
       );
 
       if (!cancelled) {
-        toast.error(error?.label ?? "Request failed", { detail: error?.hint ?? error?.message });
+        toast.error(error?.label ?? "Request failed", { detail: custom ? (error?.message ?? error?.hint) : (error?.hint ?? error?.message) });
         setMeta((current) => ({ ...(current ?? {}), error: { label: error?.label, hint: error?.hint, message: error?.message, status: error?.status } }));
       }
     } finally {
@@ -1044,7 +1047,13 @@ export default function Playground() {
               <div className="row" style={{ gap: "var(--sp-3)" }}>
                 <div className="field grow">
                   <label className="field__label" htmlFor="pg-temperature">
-                    Temperature <span className="mono">{Number(temperature).toFixed(2)}</span>
+                    Temperature{" "}
+                    <span className="mono">{temperature === null ? "provider default" : Number(temperature).toFixed(2)}</span>
+                    {temperature === null ? null : (
+                      <button type="button" className="btn btn--sm" style={{ marginLeft: "var(--sp-2)" }} onClick={() => setTemperature(null)}>
+                        Use default
+                      </button>
+                    )}
                   </label>
                   <input
                     id="pg-temperature"
@@ -1052,7 +1061,7 @@ export default function Playground() {
                     min="0"
                     max="2"
                     step="0.05"
-                    value={temperature}
+                    value={temperature ?? 0.7}
                     onChange={(event) => setTemperature(event.target.value)}
                   />
                 </div>

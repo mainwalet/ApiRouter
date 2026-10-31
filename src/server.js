@@ -1798,6 +1798,15 @@ const customPlayground = createCustomPlayground({
 // monitor, the router and the control panel all read these same arrays), and
 // the new targets are probed straight away.
 customEndpoints.onChange((endpoints) => {
+  // Remember which models each custom provider had BEFORE the change, so a model
+  // removed from an endpoint (or a whole deleted endpoint) can be followed by the
+  // other pages below.
+  const customModelsOf = () => Object.fromEntries(
+    Object.entries(config.providers ?? {})
+      .filter(([id]) => isCustomProviderId(id))
+      .map(([id, provider]) => [id, [...(provider?.models ?? [])]])
+  );
+  const modelsBefore = customModelsOf();
   for (let index = targets.length - 1; index >= 0; index -= 1) {
     if (isCustomProviderId(targets[index].provider)) targets.splice(index, 1);
   }
@@ -1810,6 +1819,28 @@ customEndpoints.onChange((endpoints) => {
   resetAutomaticOrderCache();
   if (fresh.length > 0 && !gateway.paused) {
     refreshAllHealth(fresh, trackedCheckTargetHealth).catch(() => {});
+  }
+
+  // Same rule as the Providers page: a model removed from a custom endpoint must
+  // not stay behind as a saved "Configured" declaration in the Model Configurator
+  // (and its One Provider list follows too). Best effort, never a blocker for
+  // the endpoint save.
+  const modelsAfter = customModelsOf();
+  const removedPairs = [];
+  for (const id of new Set([...Object.keys(modelsBefore), ...Object.keys(modelsAfter)])) {
+    const before = modelsBefore[id] ?? [];
+    const after = modelsAfter[id] ?? [];
+    const removed = before.filter((model) => !after.includes(model));
+    const added = after.filter((model) => !before.includes(model));
+    if (removed.length === 0 && added.length === 0) continue;
+    for (const model of removed) removedPairs.push({ provider: id, model });
+    try { oneModelStore.syncProviderModels(id, { added, removed }); }
+    catch (error) { console.warn(`one provider: could not follow the model list of ${id} (${error?.message || error})`); }
+  }
+  if (removedPairs.length > 0) {
+    modelConfig.removeForModels(removedPairs)
+      .then((dropped) => { if (dropped.length > 0) resetAutomaticOrderCache(); })
+      .catch((error) => console.warn(`model config: could not drop declarations of removed custom models (${error?.message || error})`));
   }
 });
 

@@ -175,6 +175,9 @@ test("openAiSuffixPath states the rule directly", () => {
   assert.equal(openAiSuffixPath("https://x.dev/v2", "chat/completions"), "chat/completions");
   assert.equal(openAiSuffixPath("https://x.dev/openai/v1", "chat/completions"), "chat/completions");
   assert.equal(openAiSuffixPath("", "chat/completions"), "v1/chat/completions");
+  // Google's OpenAI-compatible root carries the version before `openai`.
+  assert.equal(openAiSuffixPath("https://generativelanguage.googleapis.com/v1beta/openai", "chat/completions"), "chat/completions");
+  assert.equal(openAiSuffixPath("https://x.dev/openai", "chat/completions"), "v1/chat/completions");
 });
 
 test("streaming and non-streaming agree on the path in every builder", () => {

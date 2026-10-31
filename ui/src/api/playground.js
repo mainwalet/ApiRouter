@@ -267,10 +267,38 @@ export function extractDelta(protocol, parsed) {
   // openai-chat
   const choice = parsed.choices?.[0];
   if (!choice) return "";
-  const content = choice.delta?.content;
-  if (typeof content === "string") return content;
+  const content = contentText(choice.delta?.content);
+  if (content) return content;
   // Some providers emit the non-streaming shape even on the stream endpoint.
-  if (typeof choice.message?.content === "string") return choice.message.content;
+  return contentText(choice.message?.content);
+}
+
+/**
+ * The text of an OpenAI-style `content`: a plain string, or (from some gateways)
+ * an array of parts such as `[{ type: "text", text: "..." }]`. Anything else is "".
+ */
+function contentText(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => (typeof part === "string" ? part : typeof part?.text === "string" ? part.text : ""))
+    .join("");
+}
+
+/**
+ * The error a 200 response carries INSTEAD of text, in any of the shapes the
+ * protocols use (`{ error: { message } }`, `{ error: "..." }`, an SSE
+ * `{ type: "error" }` event, a Responses `response.failed` event). Empty when
+ * the payload is a normal one — `error: null` is not an error.
+ */
+export function extractErrorMessage(parsed) {
+  if (!parsed || typeof parsed !== "object") return "";
+  const direct = parsed.error;
+  if (typeof direct === "string") return direct;
+  if (direct && typeof direct === "object" && typeof direct.message === "string") return direct.message;
+  if (parsed.type === "error" && typeof parsed.message === "string") return parsed.message;
+  const failed = parsed.response?.error;
+  if (parsed.type === "response.failed" && failed && typeof failed.message === "string") return failed.message;
   return "";
 }
 
@@ -324,7 +352,10 @@ export function extractText(protocol, parsed) {
       .join("");
   }
 
-  return parsed.choices?.[0]?.message?.content ?? "";
+  const choice = parsed.choices?.[0];
+  const text = contentText(choice?.message?.content);
+  // Older completions-style providers answer with `choices[0].text`.
+  return text || (typeof choice?.text === "string" ? choice.text : "");
 }
 
 /**
@@ -376,18 +407,69 @@ export async function sendCustomRequest({
   onDelta,
   onMeta
 }) {
-  return runPlaygroundRequest({
-    path: CUSTOM_ENDPOINT,
-    protocol,
-    body: buildCustomPayload({ protocol, baseUrl, apiKey, model, request: body }),
-    signal,
-    timeoutMs,
-    onDelta,
-    onMeta
-  });
+  try {
+    return await runPlaygroundRequest({
+      path: CUSTOM_ENDPOINT,
+      protocol,
+      body: buildCustomPayload({ protocol, baseUrl, apiKey, model, request: body }),
+      signal,
+      timeoutMs,
+      onDelta,
+      onMeta,
+      requireText: true
+    });
+  } catch (error) {
+    throw describeCustomError(error);
+  }
 }
 
-async function runPlaygroundRequest({ path, protocol, body, headers, signal, timeoutMs, onDelta, onMeta }) {
+/**
+ * What a failed custom-endpoint call means, in the operator's terms.
+ *
+ * The gateway answers every upstream failure with HTTP 502, which the generic
+ * error table calls "All targets failed ... check the fallback chain". A custom
+ * endpoint has no targets and no chain: the useful facts are the endpoint's OWN
+ * status (carried in `details.upstreamStatus`) and what to check, so the label
+ * and hint are replaced here. The message (the endpoint's own reason) is kept.
+ */
+const CUSTOM_UPSTREAM_STATUS = {
+  400: ["Endpoint rejected the request", "The endpoint refused this request. Check the model id and the API style; the message below is its own reason."],
+  401: ["Endpoint rejected the API key", "Check the API key. If it is right, the endpoint may expect a different API style."],
+  402: ["Endpoint needs payment", "The account has no balance or quota left for this model."],
+  403: ["Endpoint refused access", "The key is valid but is not allowed to use this model or endpoint."],
+  404: ["Endpoint or model not found", "Check the base URL (is the /v1 part right?), the model id and the API style."],
+  408: ["Endpoint timed out", "The endpoint did not answer in time. Try again."],
+  429: ["Endpoint rate limited", "The endpoint is throttling this key. Wait a moment and try again."],
+  504: ["Endpoint timed out", "The endpoint did not answer in time. Try again."]
+};
+
+const CUSTOM_ERROR_TYPES = {
+  upstream_unreachable: ["Cannot reach the endpoint", "Check the base URL and port, and that the host is reachable from the gateway."],
+  upstream_redirect: ["Endpoint redirected the request", "Use the final URL as the base URL; redirects are not followed."],
+  upstream_html_response: ["Endpoint returned a web page", "The base URL may point at a website, or the host blocks server-side requests."],
+  blocked_host: ["Host not allowed", "Private and local addresses need PLAYGROUND_ALLOW_PRIVATE_HOSTS=1 on the gateway."],
+  gateway_paused: ["Gateway is paused", "Resume the gateway, then send again."]
+};
+
+export function describeCustomError(error) {
+  if (!(error instanceof ApiError) || error.kind !== "http") return error;
+
+  let found = CUSTOM_ERROR_TYPES[error.type] ?? null;
+  if (!found && error.type === "upstream_error") {
+    const status = Number(error.details?.upstreamStatus);
+    found = CUSTOM_UPSTREAM_STATUS[status]
+      ?? (status >= 500
+        ? ["Endpoint error", "The endpoint failed on its side. Try again in a moment."]
+        : [Number.isFinite(status) && status > 0 ? `Endpoint returned HTTP ${status}` : "Endpoint error", "The message below is the endpoint's own reason."]);
+  }
+  if (found) {
+    error.label = found[0];
+    error.hint = found[1];
+  }
+  return error;
+}
+
+async function runPlaygroundRequest({ path, protocol, body, headers, signal, timeoutMs, onDelta, onMeta, requireText = false }) {
   // `apiStream` keeps its timeout and the caller's abort bridge attached for the
   // whole stream lifetime; `release` drops them once the body is done with.
   const { response, release, wasTimedOut } = await apiStream(
@@ -396,7 +478,7 @@ async function runPlaygroundRequest({ path, protocol, body, headers, signal, tim
   );
 
   try {
-    return await readPlaygroundResponse({ protocol, response, onDelta, onMeta });
+    return await readPlaygroundResponse({ protocol, response, onDelta, onMeta, requireText });
   } catch (error) {
     // Errors raised while consuming the body reach here unnormalized, because
     // `apiStream` has already returned. Normalizing them keeps one error shape
@@ -409,7 +491,25 @@ async function runPlaygroundRequest({ path, protocol, body, headers, signal, tim
   }
 }
 
-async function readPlaygroundResponse({ protocol, response, onDelta, onMeta }) {
+/** A 200 reply that carries an error instead of text. Not an HTTP failure, so it gets its own label. */
+function replyError(message) {
+  const error = new ApiError({ status: 502, type: "reply_error", message });
+  error.category = "provider-error";
+  error.label = "The provider reported an error";
+  error.hint = "The reply contained an error instead of text. The message below is the provider's own reason.";
+  return error;
+}
+
+/** A reply with no text at all, which would otherwise show as a blank message. */
+function emptyReplyError() {
+  const error = new ApiError({ status: 502, type: "empty_reply", message: "The endpoint answered, but the reply had no text." });
+  error.category = "provider-error";
+  error.label = "Empty reply";
+  error.hint = "A reasoning model can spend its whole Max tokens limit thinking and send no answer. Raise Max tokens or try again; also check the API style matches the endpoint.";
+  return error;
+}
+
+async function readPlaygroundResponse({ protocol, response, onDelta, onMeta, requireText = false }) {
   const routed = {
     provider: response.headers.get("x-multi-ai-provider"),
     model: response.headers.get("x-multi-ai-model"),
@@ -441,6 +541,11 @@ async function readPlaygroundResponse({ protocol, response, onDelta, onMeta }) {
 
     text = parsed ? extractText(protocol, parsed) : sanitizeText(raw);
     meta = parsed ? extractStreamMeta(protocol, parsed) : {};
+    if (!text && parsed) {
+      const reason = extractErrorMessage(parsed);
+      if (reason) throw replyError(reason);
+    }
+    if (!text && requireText) throw emptyReplyError();
     if (text) onDelta?.(text);
     return { text, ...meta, routed };
   }
@@ -448,6 +553,34 @@ async function readPlaygroundResponse({ protocol, response, onDelta, onMeta }) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let streamError = "";
+
+  const handleFrame = (frame) => {
+    for (const line of frame.split(/\r?\n/)) {
+      if (!line.startsWith("data:")) continue;
+      const payload = line.slice(5).trim();
+      if (!payload || payload === "[DONE]") continue;
+
+      let parsed = null;
+      try {
+        parsed = JSON.parse(payload);
+      } catch {
+        continue;
+      }
+
+      const delta = extractDelta(protocol, parsed);
+      if (delta) {
+        text += delta;
+        onDelta?.(delta);
+      }
+
+      // An error frame on a 200 stream (the provider failed after answering OK).
+      if (!streamError) streamError = extractErrorMessage(parsed);
+
+      const streamMeta = extractStreamMeta(protocol, parsed);
+      if (Object.keys(streamMeta).length > 0) meta = { ...meta, ...streamMeta };
+    }
+  };
 
   try {
     for (;;) {
@@ -461,33 +594,19 @@ async function readPlaygroundResponse({ protocol, response, onDelta, onMeta }) {
       const frames = buffer.split(/\r?\n\r?\n/);
       buffer = frames.pop() ?? "";
 
-      for (const frame of frames) {
-        for (const line of frame.split(/\r?\n/)) {
-          if (!line.startsWith("data:")) continue;
-          const payload = line.slice(5).trim();
-          if (!payload || payload === "[DONE]") continue;
-
-          let parsed = null;
-          try {
-            parsed = JSON.parse(payload);
-          } catch {
-            continue;
-          }
-
-          const delta = extractDelta(protocol, parsed);
-          if (delta) {
-            text += delta;
-            onDelta?.(delta);
-          }
-
-          const streamMeta = extractStreamMeta(protocol, parsed);
-          if (Object.keys(streamMeta).length > 0) meta = { ...meta, ...streamMeta };
-        }
-      }
+      for (const frame of frames) handleFrame(frame);
     }
+
+    // The stream may end without the blank line after its last frame. Without
+    // this the final chunk of the reply would be silently dropped.
+    buffer += decoder.decode();
+    if (buffer.trim()) handleFrame(buffer);
   } finally {
     reader.releaseLock?.();
   }
 
+  // What was received stays on screen (the page flushes it); the error follows it.
+  if (streamError) throw replyError(streamError);
+  if (!text && requireText) throw emptyReplyError();
   return { text, ...meta, routed };
 }

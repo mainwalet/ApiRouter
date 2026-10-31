@@ -324,3 +324,30 @@ test("invalid JSON and oversized bodies are client errors", async () => {
     await playground.close();
   }
 });
+
+test("a base URL pasted with its endpoint path is taken as the API root", () => {
+  const norm = (baseUrl) => validateCustomRequest({ baseUrl, model: "m", request: {} }).baseUrl;
+  assert.equal(norm("https://api.example.com/v1/chat/completions"), "https://api.example.com/v1");
+  assert.equal(norm("https://api.example.com/v1/chat/completions/"), "https://api.example.com/v1");
+  assert.equal(norm("https://api.example.com/v1/responses"), "https://api.example.com/v1");
+  assert.equal(norm("https://api.anthropic.com/v1/messages"), "https://api.anthropic.com/v1");
+  // Ordinary roots, and paths that merely contain those words, are left alone.
+  assert.equal(norm("https://api.groq.com/openai/v1"), "https://api.groq.com/openai/v1");
+  assert.equal(norm("https://api.example.com/messages-gateway"), "https://api.example.com/messages-gateway");
+});
+
+test("a pasted full endpoint URL reaches the provider's real path, not a doubled one", () => {
+  for (const [protocol, pasted, expected] of [
+    ["openai-chat", "https://api.example.com/v1/chat/completions", "https://api.example.com/v1/chat/completions"],
+    ["openai-responses", "https://api.example.com/v1/responses", "https://api.example.com/v1/responses"],
+    ["anthropic", "https://api.example.com/v1/messages", "https://api.example.com/v1/messages"]
+  ]) {
+    const spec = validateCustomRequest({ protocol, baseUrl: pasted, model: "m", apiKey: "k", request: { messages: [] } });
+    assert.equal(buildCustomUpstream(spec).url, expected, protocol);
+  }
+});
+
+test("Google's OpenAI-compatible root is not given a second /v1", () => {
+  const spec = validateCustomRequest({ protocol: "openai-chat", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/", model: "gemini-x", apiKey: "k", request: { messages: [] } });
+  assert.equal(buildCustomUpstream(spec).url, "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions");
+});

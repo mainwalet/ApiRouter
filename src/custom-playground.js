@@ -37,6 +37,8 @@ import { sanitizeMessage } from "./observability/sanitize.js";
 export const CUSTOM_PROTOCOLS = Object.freeze(["openai-chat", "openai-responses", "anthropic", "gemini"]);
 
 const MAX_URL_LENGTH = 2048;
+// The endpoint paths a base URL is sometimes pasted with: chat completions, responses, messages.
+const PASTED_ENDPOINT_PATH = /\/(?:chat\/completions|responses|messages)$/i;
 const MAX_KEY_LENGTH = 4096;
 const MAX_MODEL_LENGTH = 256;
 const MAX_ERROR_BYTES = 64 * 1024;
@@ -131,7 +133,10 @@ export function validateEndpointBaseUrl(value, { allowPrivateHosts = false } = {
     throw new PlaygroundError(400, "blocked_host", "That address is private or reserved. Set PLAYGROUND_ALLOW_PRIVATE_HOSTS=1 on the gateway to test a local endpoint.");
   }
 
-  return url.origin + url.pathname.replace(/\/+$/, "");
+  // A full endpoint URL pasted from a provider's docs (".../v1/chat/completions") is
+  // taken to mean its API root. Every request builder appends the endpoint path
+  // itself, so keeping it would send the call to ".../chat/completions/v1/chat/completions".
+  return url.origin + url.pathname.replace(/\/+$/, "").replace(PASTED_ENDPOINT_PATH, "");
 }
 
 /**

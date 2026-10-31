@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildCustomPayload, buildHistory, buildPinHeaders, buildRequestBody, customMaxTokens, customProblem, endpointFor,
-  extractDelta, extractStreamMeta, extractText, parseMaxTokens, sendCustomRequest, CUSTOM_ENDPOINT
+  extractDelta, extractErrorMessage, extractStreamMeta, extractText, parseMaxTokens, sendCustomRequest, CUSTOM_ENDPOINT
 } from "../playground.js";
 
 /**
@@ -323,6 +323,104 @@ describe("custom endpoint playground", () => {
       protocol: "openai-chat", baseUrl: "https://api.example.com/v1", apiKey: "bad", model: "m",
       body: buildRequestBody({ protocol: "openai-chat", model: "m", autoRoute: false, prompt: "hi" })
     })).rejects.toMatchObject({ message: expect.stringContaining("Incorrect API key") });
+  });
+});
+
+describe("custom endpoint playground: replies that used to be lost or blank", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const frame = (data) => `data: ${JSON.stringify(data)}\n\n`;
+  const stream = (text, headers = {}) => new Response(text, { status: 200, headers: { "content-type": "text/event-stream", ...headers } });
+  const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const send = (protocol = "openai-chat") => sendCustomRequest({
+    protocol, baseUrl: "https://api.example.com/v1", apiKey: "k", model: "m",
+    body: buildRequestBody({ protocol, model: "m", autoRoute: false, prompt: "hi", stream: true })
+  });
+
+  it("keeps the last frame when the stream ends without the blank line after it", async () => {
+    vi.stubGlobal("fetch", () => Promise.resolve(stream(frame({ choices: [{ delta: { content: "Hel" } }] })
+      + `data: ${JSON.stringify({ choices: [{ delta: { content: "lo" } }] })}`)));
+    expect((await send()).text).toBe("Hello");
+  });
+
+  it("reads message content that arrives as an array of parts", async () => {
+    expect(extractText("openai-chat", { choices: [{ message: { content: [{ type: "text", text: "Hel" }, { type: "text", text: "lo" }] } }] })).toBe("Hello");
+    expect(extractDelta("openai-chat", { choices: [{ delta: { content: [{ type: "text", text: "Hi" }] } }] })).toBe("Hi");
+    expect(extractText("openai-chat", { choices: [{ text: "legacy" }] })).toBe("legacy");
+    vi.stubGlobal("fetch", () => Promise.resolve(json({ choices: [{ message: { content: [{ type: "text", text: "Hello" }] } }] })));
+    expect((await send()).text).toBe("Hello");
+  });
+
+  it("recognises an error carried by a 200 response, and ignores error: null", () => {
+    expect(extractErrorMessage({ error: { message: "insufficient_quota" } })).toBe("insufficient_quota");
+    expect(extractErrorMessage({ error: "boom" })).toBe("boom");
+    expect(extractErrorMessage({ type: "error", error: { type: "overloaded_error", message: "Overloaded" } })).toBe("Overloaded");
+    expect(extractErrorMessage({ type: "response.failed", response: { error: { message: "failed" } } })).toBe("failed");
+    expect(extractErrorMessage({ type: "response.completed", response: { error: null }, error: null })).toBe("");
+    expect(extractErrorMessage({ choices: [{ delta: { content: "x" } }] })).toBe("");
+  });
+
+  it("reports a 200 JSON error body instead of showing a blank reply", async () => {
+    vi.stubGlobal("fetch", () => Promise.resolve(json({ error: { message: "insufficient_quota" } })));
+    await expect(send()).rejects.toMatchObject({ label: "The provider reported an error", message: "insufficient_quota" });
+  });
+
+  it("keeps the text already streamed, then reports an error frame", async () => {
+    vi.stubGlobal("fetch", () => Promise.resolve(stream(frame({ choices: [{ delta: { content: "par" } }] })
+      + frame({ error: { message: "upstream died" } }))));
+    const deltas = [];
+    await expect(sendCustomRequest({
+      protocol: "openai-chat", baseUrl: "https://api.example.com/v1", apiKey: "k", model: "m",
+      body: buildRequestBody({ protocol: "openai-chat", model: "m", autoRoute: false, prompt: "hi", stream: true }),
+      onDelta: (delta) => deltas.push(delta)
+    })).rejects.toMatchObject({ message: "upstream died" });
+    expect(deltas).toEqual(["par"]);
+  });
+
+  it("explains an empty reply (for example a reasoning-only stream) instead of a blank message", async () => {
+    vi.stubGlobal("fetch", () => Promise.resolve(stream(frame({ choices: [{ delta: { reasoning_content: "thinking" } }] }) + "data: [DONE]\n\n")));
+    await expect(send()).rejects.toMatchObject({ label: "Empty reply" });
+    vi.stubGlobal("fetch", () => Promise.resolve(json({ choices: [] })));
+    await expect(send()).rejects.toMatchObject({ label: "Empty reply" });
+  });
+
+  it("labels an endpoint failure with the endpoint's own status, not 'All targets failed'", async () => {
+    const reply = (type, message, details, status = 502) => json({ error: { type, message, ...(details ? { details } : {}) } }, status);
+    const cases = [
+      [reply("upstream_error", "Upstream returned HTTP 401: Incorrect API key", { upstreamStatus: 401 }), /API key/],
+      [reply("upstream_error", "Upstream returned HTTP 404: no such model", { upstreamStatus: 404 }), /not found/i],
+      [reply("upstream_error", "Upstream returned HTTP 429: slow down", { upstreamStatus: 429 }), /rate limited/i],
+      [reply("upstream_error", "Upstream returned HTTP 503", { upstreamStatus: 503 }), /Endpoint error/],
+      [reply("upstream_unreachable", "Connection refused. Check the host and port."), /Cannot reach/],
+      [reply("upstream_html_response", "The host answered HTTP 200 with an HTML page"), /web page/],
+      [reply("gateway_paused", "Gateway is shut down", null, 409), /paused/i]
+    ];
+    for (const [response, label] of cases) {
+      vi.stubGlobal("fetch", () => Promise.resolve(response.clone()));
+      const error = await send().catch((caught) => caught);
+      expect(error.label).toMatch(label);
+      expect(`${error.label} ${error.hint}`).not.toMatch(/fallback chain|All targets/i);
+      expect(error.message).toBeTruthy();
+    }
+  });
+
+  it("leaves the router's own error labels alone outside custom mode", async () => {
+    vi.stubGlobal("fetch", () => Promise.resolve(json({ error: { type: "upstream_error", message: "All routing targets failed" } }, 502)));
+    const { sendPlaygroundRequest } = await import("../playground.js");
+    const error = await sendPlaygroundRequest({ protocol: "openai-chat", body: { messages: [] } }).catch((caught) => caught);
+    expect(error.label).toBe("All targets failed");
+  });
+});
+
+describe("playground temperature", () => {
+  it("is not sent unless the operator chose one", () => {
+    const base = { model: "m", autoRoute: false, prompt: "hi" };
+    for (const protocol of ["openai-chat", "openai-responses", "anthropic", "gemini"]) {
+      const body = buildRequestBody({ ...base, protocol, temperature: null });
+      expect(JSON.stringify(body)).not.toContain("temperature");
+    }
+    expect(buildRequestBody({ ...base, protocol: "openai-chat", temperature: 0.2 }).temperature).toBe(0.2);
+    expect(buildRequestBody({ ...base, protocol: "openai-chat", temperature: 0 }).temperature).toBe(0);
   });
 });
 

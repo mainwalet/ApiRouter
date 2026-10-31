@@ -276,3 +276,50 @@ test("e2e: API rejects bad input with a clear 400 and an unknown id with 404", a
     await router.close();
   }
 });
+test("e2e: a model removed from a custom endpoint (or a deleted endpoint) also leaves the Model Configurator", async () => {
+  const custom = await startMockUpstream(() => ({ status: 200, body: okBody("m-one") }));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "custom-e2e-"));
+  const router = await startRouter({
+    PLAYGROUND_ALLOW_PRIVATE_HOSTS: "1",
+    CUSTOM_ENDPOINTS_FILE: path.join(dir, "custom-endpoints.json")
+  });
+  const rows = async () => (await (await router.request("/api/model-config")).json()).models
+    .filter((row) => row.provider === "custom-keep")
+    .map((row) => `${row.model}:${row.stored ? "saved" : "env"}`)
+    .sort();
+  // The cleanup runs right after the endpoint save, in the background.
+  const settle = async (expected) => {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const current = await rows();
+      if (JSON.stringify(current) === JSON.stringify(expected)) return current;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return rows();
+  };
+  try {
+    const created = await put(router, "/api/custom-endpoints", {
+      name: "Keep", baseUrl: `${custom.baseUrl}/v1`, protocol: "openai-chat", models: ["m-one", "m-two"], apiKeys: ["k"]
+    });
+    assert.equal(created.status, 201);
+
+    // Declare m-two in the Model Configurator, so it has a saved ("Configured") row.
+    const declared = await put(router, "/api/model-config", { provider: "custom-keep", model: "m-two", capabilities: ["text_input", "text_output"] });
+    assert.equal(declared.status, 201, await declared.clone().text());
+    assert.deepEqual(await rows(), ["m-one:env", "m-two:saved"]);
+
+    // Removing m-two from the endpoint must remove its configurator row, not leave a ghost.
+    const trimmed = await put(router, "/api/custom-endpoints/custom-keep", { models: ["m-one"] }, "PUT");
+    assert.equal(trimmed.status, 200);
+    assert.deepEqual(await settle(["m-one:env"]), ["m-one:env"], "the removed model is gone from the Model Configurator");
+
+    // A model that is only declared for the endpoint keeps its saved row while the endpoint lists it.
+    assert.equal((await put(router, "/api/model-config", { provider: "custom-keep", model: "m-one", capabilities: ["text_input", "text_output"] })).status, 201);
+    assert.deepEqual(await rows(), ["m-one:saved"]);
+
+    // Deleting the whole endpoint removes the declarations of all its models.
+    assert.equal((await router.request("/api/custom-endpoints/custom-keep", { method: "DELETE" })).status, 200);
+    assert.deepEqual(await settle([]), [], "a deleted endpoint leaves no Model Configurator rows behind");
+  } finally {
+    await router.close(); await custom.close();
+  }
+});
