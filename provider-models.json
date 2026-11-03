@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "cda789dc-b715-412c-9b75-cfcd45b0325f",
-  "updatedAt": "2026-10-29T19:26:16.804Z",
+  "revision": "4a2d54cc-91c3-4af0-aade-e9cdb8f36466",
+  "updatedAt": "2026-11-03T04:38:42.017Z",
   "providers": {
     "cloudflare": {
       "models": [
@@ -30,6 +30,14 @@
     "mistral": {
       "models": [
         "mistral-medium-3.5"
+      ]
+    },
+    "opencode": {
+      "models": [
+        "deepseek-v4.1-flash-free",
+        "glm-5.3-flash-free",
+        "nemotron-3.5-super-vl-free",
+        "mimo-v2.6-flash-free"
       ]
     },
     "pollinations": {
