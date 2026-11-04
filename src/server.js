@@ -42,6 +42,7 @@ import {
 } from "./intent-detect.js";
 import { applySystemPrompt, loadSystemPrompt } from "./system-prompt.js";
 import {
+  capabilityLabel,
   contextLimitMessage,
   filterTargetsByRequirements,
   isContextLimitFailure,
@@ -1089,15 +1090,36 @@ async function proxy(req, res, protocol, pathname) {
   if (oneModel && oneModelTargets.length === 0) {
     const label = sanitizeMessage(`${oneModel.provider} (${oneModel.models.join(", ")})`);
     const allOff = oneModel.models.every((model) => modelSwitch.isDisabled(oneModel.provider, model));
+    // Say WHY. The chosen models can be absent from the candidates because the
+    // capability filter dropped them (the request needs e.g. tool calling and the
+    // model declares only text), which is not a protocol problem: any protocol
+    // is bridged. Blaming the protocol sends the operator to the wrong setting.
+    const chosenExclusions = exclusions.filter((entry) =>
+      entry.provider === oneModel.provider && oneModel.models.includes(entry.model));
+    const missingCapabilities = [...new Set(chosenExclusions.flatMap((entry) => entry.missing ?? []))];
+    const capabilityExcluded = chosenExclusions.some((entry) =>
+      entry.reason === "capability_not_configured" || entry.reason === "adapter_unsupported");
     const oneMessage = allOff
       ? `One Provider Fallback is on and every chosen model of ${label} is switched off in the Control Panel`
-      : `One Provider Fallback is on and ${label} cannot serve this request (none speaks this client protocol)`;
+      : capabilityExcluded
+        ? `One Provider Fallback is on and ${label} cannot serve this request: it requires `
+          + `${missingCapabilities.map(capabilityLabel).join(", ") || "capabilities the model does not declare"}. `
+          + "Declare them for the chosen model in the Model Configurator."
+        : `One Provider Fallback is on and ${label} cannot serve this request`;
     recordRequest({
       pendingSeq: liveSeq,
       id: sessionInfo.id, receivedAt, protocol, requestedModel, httpStatus: 503,
       outcome: "failed", errorType: "one_model_unavailable", errorMessage: oneMessage, attempts
     });
-    return json(res, 503, { error: { message: oneMessage, type: "one_model_unavailable" } }, { "x-multi-ai-session-id": sessionInfo.id });
+    return json(res, 503, {
+      error: {
+        message: oneMessage,
+        type: "one_model_unavailable",
+        ...(capabilityExcluded
+          ? { required_capabilities: profile.required, excluded_candidates: chosenExclusions.slice(0, 20) }
+          : {})
+      }
+    }, { "x-multi-ai-session-id": sessionInfo.id });
   }
 
   // A Manual Model Selection is saved but nothing in it can serve this request.
