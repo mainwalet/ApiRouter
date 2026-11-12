@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "2886cbdf-6771-44c1-93cd-c07864bb4174",
-  "updatedAt": "2026-11-12T04:51:22.659Z",
+  "revision": "19f580a3-a019-42e3-97e1-dd27f2ee69fc",
+  "updatedAt": "2026-11-12T04:52:29.146Z",
   "models": [
     {
       "id": "mc_8f0a2ef8f5b577ce",
@@ -799,6 +799,29 @@
       "version": 1,
       "createdAt": 1794459082659,
       "updatedAt": 1794459082659
+    },
+    {
+      "id": "mc_a7c0e742bddd35fe",
+      "provider": "custom-respan",
+      "model": "gemma-4-26b-a4b-it",
+      "displayName": "gemma-4-26b-a4b-it",
+      "enabled": true,
+      "capabilities": [
+        "text_input",
+        "text_output",
+        "tool_calling",
+        "image_input",
+        "audio_input",
+        "structured_output",
+        "streaming",
+        "reasoning"
+      ],
+      "protocol": null,
+      "contextLimit": 262000,
+      "metadata": {},
+      "version": 1,
+      "createdAt": 1794459149145,
+      "updatedAt": 1794459149145
     }
   ]
 }
