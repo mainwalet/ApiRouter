@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "c8a8c453-1aef-49ae-ba00-4598a943df45",
-  "updatedAt": "2026-11-12T05:10:53.636Z",
+  "revision": "f80fa38e-01bc-4543-8323-e203d27dcfe6",
+  "updatedAt": "2026-11-12T05:14:06.783Z",
   "providers": {
     "cloudflare": {
       "models": [
@@ -35,6 +35,11 @@
     "opencode": {
       "models": [
         "nemotron-3.5-super-vl-free"
+      ]
+    },
+    "openrouter": {
+      "models": [
+        "nvidia/nemotron-3-ultra-550b-a55b:free"
       ]
     },
     "pollinations": {
