@@ -787,7 +787,7 @@
    becomes a bottom sheet opened from the route line above the composer, so the
    chat gets the whole screen. */
 
-.main:has(.page--playground) { padding-bottom: var(--sp-3); }
+.main:has(.page-slot:not([hidden]) .page--playground) { padding-bottom: var(--sp-3); }
 .page--playground .page__header { margin-bottom: var(--sp-3); }
 
 .playground {
@@ -1751,7 +1751,13 @@ button.livelog__rid:hover { color: var(--accent); text-decoration: underline; }
    than its panel scrolls inside the panel. Phone: the same panels are split
    over three tabs (Overview / Traffic / Activity), each one screen tall. */
 
-.main:has(.page--dashboard) { overflow: hidden; padding-top: var(--sp-3); padding-bottom: var(--sp-3); }
+/* The Dashboard sizes itself to one screen, but `.main` is never locked with
+   `overflow: hidden`: it scrolls whenever the content is taller than the window.
+   (A lock keyed on `:has(.page--dashboard)` used to stick after leaving the Dashboard,
+   because visited pages stay mounted - hidden - in KeepAlivePages, which left every
+   other page unscrollable until a refresh.) Only the padding is Dashboard-specific,
+   and only while the Dashboard is the visible page. */
+.main:has(.page-slot:not([hidden]) .page--dashboard) { padding-top: var(--sp-3); padding-bottom: var(--sp-3); }
 
 .page--dashboard {
   height: calc(100dvh - var(--header-height) - 2 * var(--sp-3));
@@ -1953,7 +1959,6 @@ button.dash-feed__item:focus-visible { outline: 2px solid var(--accent); outline
 
 /* A very short window (landscape phone): fall back to normal scrolling. */
 @media (max-height: 520px) and (min-width: 721px) {
-  .main:has(.page--dashboard) { overflow-y: auto; }
   .page--dashboard { height: auto; }
   .dash-body { grid-template-rows: auto; }
   .dash-col { min-height: 320px; }

@@ -3,6 +3,33 @@ import { Icon } from "./Icon.jsx";
 import { usePageActive } from "../../context/PageActivityContext.js";
 
 /**
+ * Background scroll lock shared by every open overlay.
+ *
+ * Each overlay used to save `body.style.overflow` and put that value back on close.
+ * With two overlays open (a confirm dialog over a drawer) the second one saved
+ * "hidden", so when they closed in the "wrong" order the page was left locked for
+ * good. A counter fixes that: the first lock remembers the original value, the
+ * last unlock restores it, whatever order they close in.
+ */
+let scrollLocks = 0;
+let scrollLockOriginal = "";
+
+function lockBodyScroll() {
+  if (scrollLocks === 0) {
+    scrollLockOriginal = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+  }
+  scrollLocks += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    scrollLocks = Math.max(0, scrollLocks - 1);
+    if (scrollLocks === 0) document.body.style.overflow = scrollLockOriginal;
+  };
+}
+
+/**
  * Focus management shared by the modal and the drawer.
  *
  * Three things are handled here because getting them wrong makes an overlay
@@ -69,12 +96,11 @@ export function useOverlay({ open, onClose, initialFocusRef = null }) {
 
     document.addEventListener("keydown", onKeyDown, true);
 
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const unlockBodyScroll = lockBodyScroll();
 
     return () => {
       document.removeEventListener("keydown", onKeyDown, true);
-      document.body.style.overflow = previousOverflow;
+      unlockBodyScroll();
       previouslyFocused.current?.focus?.();
     };
   }, [open, pageActive, initialFocusRef]);
