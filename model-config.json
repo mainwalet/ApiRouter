@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "6ede291c-626a-4a3e-89f4-c732374d2275",
-  "updatedAt": "2026-11-12T04:54:28.472Z",
+  "revision": "21340c15-0064-4a52-990c-5279a6c1857a",
+  "updatedAt": "2026-11-12T04:56:02.858Z",
   "models": [
     {
       "id": "mc_8f0a2ef8f5b577ce",
@@ -625,27 +625,6 @@
       "version": 1,
       "createdAt": 1793302851624,
       "updatedAt": 1793302851624
-    },
-    {
-      "id": "mc_783c731c2c8d4518",
-      "provider": "custom-onerouter",
-      "model": "apodex/apodex-1.1-mini:free",
-      "displayName": "apodex/apodex-1.1-mini:free",
-      "enabled": true,
-      "capabilities": [
-        "text_input",
-        "text_output",
-        "tool_calling",
-        "structured_output",
-        "streaming",
-        "reasoning"
-      ],
-      "protocol": null,
-      "contextLimit": null,
-      "metadata": {},
-      "version": 1,
-      "createdAt": 1793388201644,
-      "updatedAt": 1793388223881
     },
     {
       "id": "mc_357eb59f297d9d52",
