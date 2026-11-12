@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "9dff5f89-1d0c-4b58-8370-c7935f724ce9",
-  "updatedAt": "2026-11-12T05:22:16.745Z",
+  "revision": "806502c7-1bbd-4476-83e8-70299f3f6455",
+  "updatedAt": "2026-11-12T05:24:02.040Z",
   "models": [
     {
       "id": "mc_8f0a2ef8f5b577ce",
@@ -385,11 +385,11 @@
         "reasoning"
       ],
       "protocol": null,
-      "contextLimit": null,
+      "contextLimit": 1000000,
       "metadata": {},
       "version": 1,
       "createdAt": 1793302817362,
-      "updatedAt": 1793302817362
+      "updatedAt": 1794461042039
     },
     {
       "id": "mc_e9d1f2a87dcdedbc",
