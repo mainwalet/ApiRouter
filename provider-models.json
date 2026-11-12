@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "4a2d54cc-91c3-4af0-aade-e9cdb8f36466",
-  "updatedAt": "2026-11-03T04:38:42.017Z",
+  "revision": "c8a8c453-1aef-49ae-ba00-4598a943df45",
+  "updatedAt": "2026-11-12T05:10:53.636Z",
   "providers": {
     "cloudflare": {
       "models": [
@@ -34,10 +34,7 @@
     },
     "opencode": {
       "models": [
-        "deepseek-v4.1-flash-free",
-        "glm-5.3-flash-free",
-        "nemotron-3.5-super-vl-free",
-        "mimo-v2.6-flash-free"
+        "nemotron-3.5-super-vl-free"
       ]
     },
     "pollinations": {
