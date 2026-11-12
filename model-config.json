@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "2e6b3086-7eba-4401-b74d-f634ebd96b8e",
-  "updatedAt": "2026-11-12T05:24:47.449Z",
+  "revision": "c6c9fd9c-4cce-4ec4-b10c-9ffbe2bf309e",
+  "updatedAt": "2026-11-12T05:27:18.897Z",
   "models": [
     {
       "id": "mc_8f0a2ef8f5b577ce",
@@ -613,6 +613,24 @@
       "version": 1,
       "createdAt": 1794460154315,
       "updatedAt": 1794460333754
+    },
+    {
+      "id": "mc_45d484dd5bba52f3",
+      "provider": "custom-omnirute",
+      "model": "auto",
+      "displayName": "auto",
+      "enabled": true,
+      "capabilities": [
+        "text_input",
+        "text_output",
+        "streaming"
+      ],
+      "protocol": null,
+      "contextLimit": 1000000,
+      "metadata": {},
+      "version": 1,
+      "createdAt": 1794461238897,
+      "updatedAt": 1794461238897
     }
   ]
 }
