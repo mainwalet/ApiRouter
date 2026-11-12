@@ -17,8 +17,12 @@ const PAD = { top: 8, right: 8, bottom: 18, left: 36 };
 
 function HiddenTable({ caption, columns, rows }) {
   if (rows.length === 0) return null;
+  // A <table> ignores `height: 1px; overflow: hidden`, so on its own an ".sr-only"
+  // table keeps its full height and stretches the scrollable area below the page
+  // (empty space you could scroll into). Clip it with a wrapper instead.
   return (
-    <table className="sr-only">
+    <div className="sr-only">
+    <table>
       <caption>{caption}</caption>
       <thead>
         <tr>{columns.map((column) => <th key={column} scope="col">{column}</th>)}</tr>
@@ -35,6 +39,7 @@ function HiddenTable({ caption, columns, rows }) {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 

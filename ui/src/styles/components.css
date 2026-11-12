@@ -1745,14 +1745,16 @@ button.livelog__rid:hover { color: var(--accent); text-decoration: underline; }
 
 /* --- Dashboard --------------------------------------------------------------
 
-   Everything is on screen at once: the page is exactly one viewport tall and
-   never scrolls. Desktop: status + figures on top, then three columns (traffic,
-   health, activity) that share the rest of the height; a list that is longer
-   than its panel scrolls inside the panel. Phone: the same panels are split
-   over three tabs (Overview / Traffic / Activity), each one screen tall. */
+   The page is at least one viewport tall, so on a big screen the panels stretch
+   to fill it, but it is never squeezed into the viewport: when the content needs
+   more room (a laptop, a phone, a long provider list) the page grows and the
+   whole page scrolls, instead of hiding rows inside tiny scroll boxes.
+   Desktop: status + figures on top, then three columns (traffic, health,
+   activity). Phone: the same panels are split over three tabs
+   (Overview / Traffic / Activity). */
 
-/* The Dashboard sizes itself to one screen, but `.main` is never locked with
-   `overflow: hidden`: it scrolls whenever the content is taller than the window.
+/* `.main` is never locked with `overflow: hidden`: it scrolls whenever the
+   content is taller than the window.
    (A lock keyed on `:has(.page--dashboard)` used to stick after leaving the Dashboard,
    because visited pages stay mounted - hidden - in KeepAlivePages, which left every
    other page unscrollable until a refresh.) Only the padding is Dashboard-specific,
@@ -1760,10 +1762,9 @@ button.livelog__rid:hover { color: var(--accent); text-decoration: underline; }
 .main:has(.page-slot:not([hidden]) .page--dashboard) { padding-top: var(--sp-3); padding-bottom: var(--sp-3); }
 
 .page--dashboard {
-  height: calc(100dvh - var(--header-height) - 2 * var(--sp-3));
+  min-height: calc(100dvh - var(--header-height) - 2 * var(--sp-3));
   display: flex;
   flex-direction: column;
-  min-height: 0;
 }
 .page--dashboard .page__header { margin-bottom: var(--sp-2); flex: none; align-items: center; }
 .page--dashboard .page__subtitle { display: none; }
@@ -1797,17 +1798,17 @@ button.livelog__rid:hover { color: var(--accent); text-decoration: underline; }
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 5fr) minmax(0, 3fr) minmax(0, 4fr);
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
   gap: var(--sp-3);
 }
 .dash-top { grid-column: 1 / -1; display: grid; gap: var(--sp-2); min-width: 0; }
 .dash-col { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; min-height: 0; }
 
-/* Panels inside the grid fill their column and scroll internally, never the page. */
+/* Panels inside the grid are as tall as their content and share any spare height. */
 .dash-body .panel { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .dash-body .panel__header { flex: none; min-height: 32px; padding-top: 4px; padding-bottom: 4px; }
 .dash-body .panel__body { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: var(--sp-2) var(--sp-3); }
-.dash-panel--grow { flex: 1 1 0; }
+.dash-panel--grow { flex: 1 1 auto; }
 .dash-body .state { padding: var(--sp-3); }
 
 /* Status strip. */
@@ -1949,24 +1950,16 @@ button.dash-feed__item:focus-visible { outline: 2px solid var(--accent); outline
 .dash-feed__title { font-size: var(--fs-sm); }
 .dash-feed__side { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
 
-/* Tablet / small laptop: two columns, still no page scroll. */
+/* Tablet / small laptop: two columns. */
 @media (max-width: 1100px) and (min-width: 721px) {
-  .dash-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr); }
+  .dash-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto auto; }
   .dash-col--traffic { grid-column: 1; grid-row: 2; }
   .dash-col--health { grid-column: 2; grid-row: 2; }
   .dash-col--activity { grid-column: 1 / -1; grid-row: 3; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
-/* A very short window (landscape phone): fall back to normal scrolling. */
-@media (max-height: 520px) and (min-width: 721px) {
-  .page--dashboard { height: auto; }
-  .dash-body { grid-template-rows: auto; }
-  .dash-col { min-height: 320px; }
-}
-
-/* Phone: three tabs, each exactly one screen. */
+/* Phone: three tabs. */
 @media (max-width: 720px) {
-  .page--dashboard { height: calc(100dvh - var(--header-height) - 2 * var(--sp-3)); }
   .page--dashboard .page__heading .row { display: none; }
   .page--dashboard .page__actions { margin-left: auto; width: auto; flex-wrap: nowrap; gap: var(--sp-1); }
   .page--dashboard .btn__label { display: none; }
@@ -2004,7 +1997,7 @@ button.dash-feed__item:focus-visible { outline: 2px solid var(--accent); outline
   .page--dashboard[data-tab="activity"] .dash-body > :not([data-pane="activity"]) { display: none; }
 
   .dash-top { flex: none; gap: var(--sp-2); }
-  .dash-col { flex: 1 1 0; gap: var(--sp-2); }
+  .dash-col { flex: 1 1 auto; gap: var(--sp-2); }
   .dash-status { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-1); }
   .dash-tile { flex-direction: column; align-items: flex-start; gap: 2px; padding: 6px var(--sp-2); border-left-width: 1px; border-top-width: 3px; }
   .dash-tile--ok { border-top-color: var(--ok); }
