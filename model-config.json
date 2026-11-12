@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "c6c9fd9c-4cce-4ec4-b10c-9ffbe2bf309e",
-  "updatedAt": "2026-11-12T05:27:18.897Z",
+  "revision": "e1960842-9e86-47b8-9311-2f93cd3313c6",
+  "updatedAt": "2026-11-12T19:23:32.347Z",
   "models": [
     {
       "id": "mc_8f0a2ef8f5b577ce",
@@ -631,6 +631,98 @@
       "version": 1,
       "createdAt": 1794461238897,
       "updatedAt": 1794461238897
+    },
+    {
+      "id": "mc_c0ae28b403d6a182",
+      "provider": "custom-coarena-ai",
+      "model": "claude-fable-5-2",
+      "displayName": "claude-fable-5-2",
+      "enabled": true,
+      "capabilities": [
+        "text_input",
+        "text_output",
+        "tool_calling",
+        "image_input",
+        "image_output",
+        "structured_output",
+        "streaming",
+        "reasoning"
+      ],
+      "protocol": null,
+      "contextLimit": null,
+      "metadata": {},
+      "version": 1,
+      "createdAt": 1794511412346,
+      "updatedAt": 1794511412346
+    },
+    {
+      "id": "mc_f0d6c5ca2a090826",
+      "provider": "custom-coarena-ai",
+      "model": "claude-opus-5-5",
+      "displayName": "claude-opus-5-5",
+      "enabled": true,
+      "capabilities": [
+        "text_input",
+        "text_output",
+        "tool_calling",
+        "image_input",
+        "image_output",
+        "structured_output",
+        "streaming",
+        "reasoning"
+      ],
+      "protocol": null,
+      "contextLimit": null,
+      "metadata": {},
+      "version": 1,
+      "createdAt": 1794511412346,
+      "updatedAt": 1794511412346
+    },
+    {
+      "id": "mc_060b998181b7c7f6",
+      "provider": "custom-coarena-ai",
+      "model": "deepseek-v4-1-flash-1017",
+      "displayName": "deepseek-v4-1-flash-1017",
+      "enabled": true,
+      "capabilities": [
+        "text_input",
+        "text_output",
+        "tool_calling",
+        "image_input",
+        "image_output",
+        "structured_output",
+        "streaming",
+        "reasoning"
+      ],
+      "protocol": null,
+      "contextLimit": null,
+      "metadata": {},
+      "version": 1,
+      "createdAt": 1794511412346,
+      "updatedAt": 1794511412346
+    },
+    {
+      "id": "mc_2b98ecb0c0193b19",
+      "provider": "custom-coarena-ai",
+      "model": "gemini-4-argon",
+      "displayName": "gemini-4-argon",
+      "enabled": true,
+      "capabilities": [
+        "text_input",
+        "text_output",
+        "tool_calling",
+        "image_input",
+        "image_output",
+        "structured_output",
+        "streaming",
+        "reasoning"
+      ],
+      "protocol": null,
+      "contextLimit": null,
+      "metadata": {},
+      "version": 1,
+      "createdAt": 1794511412346,
+      "updatedAt": 1794511412346
     }
   ]
 }
