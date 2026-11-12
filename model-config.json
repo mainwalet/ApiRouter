@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "c07b30a0-2d88-4904-bef6-77bf3f741903",
-  "updatedAt": "2026-11-04T13:48:48.599Z",
+  "revision": "2886cbdf-6771-44c1-93cd-c07864bb4174",
+  "updatedAt": "2026-11-12T04:51:22.659Z",
   "models": [
     {
       "id": "mc_8f0a2ef8f5b577ce",
@@ -774,6 +774,31 @@
       "version": 1,
       "createdAt": 1793800128599,
       "updatedAt": 1793800128599
+    },
+    {
+      "id": "mc_fe7451cf9aa2abd8",
+      "provider": "custom-respan",
+      "model": "gemini-4-carbon",
+      "displayName": "gemini-4-carbon",
+      "enabled": true,
+      "capabilities": [
+        "text_input",
+        "text_output",
+        "tool_calling",
+        "image_input",
+        "video_input",
+        "audio_input",
+        "file_input",
+        "structured_output",
+        "streaming",
+        "reasoning"
+      ],
+      "protocol": null,
+      "contextLimit": 1000000,
+      "metadata": {},
+      "version": 1,
+      "createdAt": 1794459082659,
+      "updatedAt": 1794459082659
     }
   ]
 }
