@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "f80fa38e-01bc-4543-8323-e203d27dcfe6",
-  "updatedAt": "2026-11-12T05:14:06.783Z",
+  "revision": "e0116b60-03a5-4ed1-a9a7-81f6b4eb4ce8",
+  "updatedAt": "2026-11-12T05:16:36.886Z",
   "providers": {
     "cloudflare": {
       "models": [
@@ -45,13 +45,7 @@
     "pollinations": {
       "models": [
         "openai/gpt-6.1-sol",
-        "openai/gpt-5.4",
-        "openai/gpt-6-sol",
-        "openai/gpt-5.6-sol",
-        "moonshotai/kimi-k3",
-        "z-ai/glm-5.3",
-        "deepseek/deepseek-v4.1-flash",
-        "deepseek/deepseek-v4-flash"
+        "deepseek/deepseek-v4.1-flash"
       ]
     },
     "vercel": {
