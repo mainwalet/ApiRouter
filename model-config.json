@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "69f9256c-0672-4fee-84e5-91140b690675",
-  "updatedAt": "2026-11-12T05:12:13.754Z",
+  "revision": "f4c06700-2142-44f5-ad86-c1b7fc9ae42d",
+  "updatedAt": "2026-11-12T05:14:07.714Z",
   "models": [
     {
       "id": "mc_8f0a2ef8f5b577ce",
@@ -46,28 +46,6 @@
       "updatedAt": 1793460823595
     },
     {
-      "id": "mc_6e792560a28677ae",
-      "provider": "openrouter",
-      "model": "minimax/minimax-m3.1-flash:free",
-      "displayName": "minimax/minimax-m3.1-flash:free",
-      "enabled": true,
-      "capabilities": [
-        "text_input",
-        "text_output",
-        "tool_calling",
-        "image_input",
-        "video_input",
-        "structured_output",
-        "streaming"
-      ],
-      "protocol": null,
-      "contextLimit": null,
-      "metadata": {},
-      "version": 1,
-      "createdAt": 1792780907578,
-      "updatedAt": 1792783072773
-    },
-    {
       "id": "mc_c93830178f57be0b",
       "provider": "openrouter",
       "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -86,26 +64,6 @@
       "version": 1,
       "createdAt": 1792781120437,
       "updatedAt": 1793197808552
-    },
-    {
-      "id": "mc_58d51167851d5d19",
-      "provider": "openrouter",
-      "model": "poolside/laguna-s-2.1:free",
-      "displayName": "poolside/laguna-s-2.1:free",
-      "enabled": true,
-      "capabilities": [
-        "text_input",
-        "text_output",
-        "tool_calling",
-        "streaming",
-        "reasoning"
-      ],
-      "protocol": null,
-      "contextLimit": null,
-      "metadata": {},
-      "version": 1,
-      "createdAt": 1792781199687,
-      "updatedAt": 1792781199687
     },
     {
       "id": "mc_98147032f0de1878",
