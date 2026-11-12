@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "94eeb2a7-5a96-4b47-a378-46e07a3d2319",
-  "updatedAt": "2026-11-12T05:10:55.098Z",
+  "revision": "df34d59a-5c63-41d6-bd9c-4675097f7743",
+  "updatedAt": "2026-11-12T05:11:08.677Z",
   "models": [
     {
       "id": "mc_8f0a2ef8f5b577ce",
@@ -149,27 +149,6 @@
       "version": 1,
       "createdAt": 1792782728592,
       "updatedAt": 1794460020810
-    },
-    {
-      "id": "mc_e55655e35b6ce762",
-      "provider": "opencode",
-      "model": "space-bunny-free",
-      "displayName": "space-bunny-free",
-      "enabled": true,
-      "capabilities": [
-        "text_input",
-        "text_output",
-        "tool_calling",
-        "structured_output",
-        "streaming",
-        "reasoning"
-      ],
-      "protocol": null,
-      "contextLimit": null,
-      "metadata": {},
-      "version": 1,
-      "createdAt": 1792782983909,
-      "updatedAt": 1792782983909
     },
     {
       "id": "mc_d80d7292de8e9c53",
