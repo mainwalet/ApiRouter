@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "21340c15-0064-4a52-990c-5279a6c1857a",
-  "updatedAt": "2026-11-12T04:56:02.858Z",
+  "revision": "e94a9418-d47a-48b0-beaf-3d32ae11b9f7",
+  "updatedAt": "2026-11-12T04:56:27.621Z",
   "models": [
     {
       "id": "mc_8f0a2ef8f5b577ce",
@@ -625,27 +625,6 @@
       "version": 1,
       "createdAt": 1793302851624,
       "updatedAt": 1793302851624
-    },
-    {
-      "id": "mc_357eb59f297d9d52",
-      "provider": "custom-onerouter",
-      "model": "internlm/atria-dawn-preview:free",
-      "displayName": "internlm/atria-dawn-preview:free",
-      "enabled": true,
-      "capabilities": [
-        "text_input",
-        "text_output",
-        "tool_calling",
-        "structured_output",
-        "streaming",
-        "reasoning"
-      ],
-      "protocol": null,
-      "contextLimit": null,
-      "metadata": {},
-      "version": 1,
-      "createdAt": 1793388223881,
-      "updatedAt": 1793388223881
     },
     {
       "id": "mc_9b5e94ed1ee149e5",
